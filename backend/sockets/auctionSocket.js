@@ -1,5 +1,3 @@
-import { activeAuctions } from '../controllers/auctionController.js';
-
 let io;
 
 export const initAuctionSocket = (socketIo) => {
@@ -33,15 +31,6 @@ export const initAuctionSocket = (socketIo) => {
           amount,
           timestamp: new Date()
         });
-
-        // Reset timer notification if bid in last 5 seconds
-        const activeData = activeAuctions.get(auctionId);
-        if (activeData && activeData.timeRemaining <= 5) {
-          io.to('auction-room').emit('timer-reset', {
-            auctionId,
-            timeRemaining: 5
-          });
-        }
       } catch (error) {
         console.error('Socket bid error:', error);
         socket.emit('bid-error', { message: error.message });

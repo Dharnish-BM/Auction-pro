@@ -22,8 +22,11 @@ import userRoutes from './routes/users.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // Import socket handlers
-import { initAuctionSocket } from './sockets/auctionSocket.js';
+import { initAuctionSocket, emitAuctionEvent, emitPlayerSold, emitTimerTick } from './sockets/auctionSocket.js';
 import { initScoreboardSocket } from './sockets/scoreboardSocket.js';
+
+// Import auction controller to inject emitters
+import { setAuctionEmitters } from './controllers/auctionController.js';
 
 // Connect to database
 connectDB();
@@ -43,6 +46,13 @@ const io = new Server(httpServer, {
 // Initialize socket handlers
 initAuctionSocket(io);
 initScoreboardSocket(io);
+
+// Inject socket emitters into auction controller to avoid circular dependency
+setAuctionEmitters({
+  emitAuctionEvent,
+  emitPlayerSold,
+  emitTimerTick
+});
 
 // Middleware
 app.use(cors({

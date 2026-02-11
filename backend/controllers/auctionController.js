@@ -2,10 +2,20 @@ import { AppError, asyncHandler } from '../middleware/errorHandler.js';
 import Auction from '../models/Auction.js';
 import Player from '../models/Player.js';
 import Team from '../models/Team.js';
-import { emitAuctionEvent } from '../sockets/auctionSocket.js';
 
 // Active auction store (in-memory for timer management)
 let activeAuctions = new Map();
+
+// Socket emitter functions (set by server.js to avoid circular dependency)
+let emitAuctionEvent = () => {};
+let emitPlayerSold = () => {};
+let emitTimerTick = () => {};
+
+export const setAuctionEmitters = (emitters) => {
+  emitAuctionEvent = emitters.emitAuctionEvent;
+  emitPlayerSold = emitters.emitPlayerSold;
+  emitTimerTick = emitters.emitTimerTick;
+};
 
 // @desc    Get all auctions
 // @route   GET /api/auctions
@@ -178,17 +188,19 @@ export const placeBid = asyncHandler(async (req, res) => {
     .populate('highestBidder', 'name logo color');
 
   // Emit bid placed event to all clients
-  emitAuctionEvent('bid-placed', {
+  const bidEventData = {
     auctionId: auction._id.toString(),
     teamId: team._id.toString(),
     teamName: team.name,
     amount: amount,
     highestBid: auction.highestBid,
-    highestBidder: auction.highestBidder,
+    highestBidder: auction.highestBidder?.toString(),
     highestBidderName: auction.highestBidderName,
     bidHistory: auction.bidHistory,
     timestamp: new Date()
-  });
+  };
+  console.log('[Socket] Emitting bid-placed:', bidEventData);
+  emitAuctionEvent('bid-placed', bidEventData);
 
   res.json({
     success: true,

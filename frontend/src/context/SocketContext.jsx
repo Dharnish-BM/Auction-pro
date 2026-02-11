@@ -49,7 +49,10 @@ export const SocketProvider = ({ children }) => {
   // Join auction room
   const joinAuction = useCallback(() => {
     if (socketRef.current) {
+      console.log('[Socket] Emitting join-auction');
       socketRef.current.emit('join-auction');
+    } else {
+      console.log('[Socket] Cannot join auction - socket not connected');
     }
   }, []);
 

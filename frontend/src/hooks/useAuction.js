@@ -111,15 +111,17 @@ export const useAuction = () => {
 
   // Socket event listeners
   useEffect(() => {
+    console.log('[Auction] Joining auction room...');
     joinAuction();
 
     const handleAuctionStarted = (data) => {
-      // Fetch fresh auction data when auction starts
+      console.log('[Auction] Event: auction-started', data);
       fetchCurrentAuction();
       toast.info(`🎯 Auction started for ${data.player?.name || 'new player'}!`);
     };
 
     const handleAuctionEnded = (data) => {
+      console.log('[Auction] Event: auction-ended', data);
       setCurrentAuction(prev => {
         if (!prev || prev._id.toString() !== data.auctionId) return prev;
         return {
@@ -133,8 +135,24 @@ export const useAuction = () => {
     };
 
     const handleBidPlaced = (data) => {
+      console.log('[Auction] Event: bid-placed', data);
       setCurrentAuction(prev => {
-        if (!prev || prev._id.toString() !== data.auctionId) return prev;
+        if (!prev) {
+          console.log('[Auction] No current auction, fetching...');
+          fetchCurrentAuction();
+          return prev;
+        }
+        
+        // Compare IDs as strings
+        const prevId = typeof prev._id === 'string' ? prev._id : prev._id.toString();
+        const dataId = typeof data.auctionId === 'string' ? data.auctionId : data.auctionId?.toString();
+        
+        if (prevId !== dataId) {
+          console.log('[Auction] Auction ID mismatch:', prevId, '!==', dataId);
+          return prev;
+        }
+        
+        console.log('[Auction] Updating auction with new bid:', data);
         return {
           ...prev,
           highestBid: data.highestBid || data.amount,
@@ -160,6 +178,7 @@ export const useAuction = () => {
     };
 
     const handlePlayerSold = (data) => {
+      console.log('[Auction] Event: player-sold', data);
       setCurrentAuction(prev => {
         if (!prev) return prev;
         return {
@@ -181,6 +200,7 @@ export const useAuction = () => {
     on('player-sold', handlePlayerSold);
 
     return () => {
+      console.log('[Auction] Leaving auction room...');
       off('auction-started', handleAuctionStarted);
       off('auction-ended', handleAuctionEnded);
       off('bid-placed', handleBidPlaced);
