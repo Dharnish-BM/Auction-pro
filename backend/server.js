@@ -37,7 +37,11 @@ const httpServer = createServer(app);
 // Socket.IO setup
 const io = new Server(httpServer, {
   cors: {
+<<<<<<< HEAD
     origin: process.env.CLIENT_URL?.split(',') || ['http://localhost:5173', 'http://localhost:3000'],
+=======
+    origin: 'https://auction-pro-zmps.vercel.app' || 'http://localhost:5173',
+>>>>>>> 6586d752c434d642b55de11f164e7f7df0ea72cb
     methods: ['GET', 'POST'],
     credentials: true
   }
