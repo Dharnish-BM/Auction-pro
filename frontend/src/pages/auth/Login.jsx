@@ -127,14 +127,7 @@ export const Login = () => {
             </button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 rounded-lg bg-sports-border/50">
-            <p className="text-xs text-gray-400 text-center mb-2">Demo Credentials</p>
-            <div className="text-xs text-gray-500 text-center space-y-1">
-              <p>Admin: admin@turauction.com / admin123</p>
-              <p>Captain: captain1@turauction.com / captain123</p>
-            </div>
-          </div>
+
 
           {/* Footer */}
           <div className="mt-6 text-center">
