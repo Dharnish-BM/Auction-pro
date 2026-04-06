@@ -11,8 +11,19 @@
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "https://auction-pro-7mpf.onrender.com/api/$1"
+    },
+    {
+      "src": "/socket.io/(.*)",
+      "dest": "https://auction-pro-7mpf.onrender.com/socket.io/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/frontend/dist/$1"
+      "dest": "/frontend/dist/index.html"
     }
   ]
 }
