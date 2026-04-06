@@ -4,482 +4,509 @@ import Match from '../models/Match.js';
 import Player from '../models/Player.js';
 import Team from '../models/Team.js';
 
-// Active auction store (in-memory for timer management)
-let activeAuctions = new Map();
-
-// Socket emitter functions (set by server.js to avoid circular dependency)
-let emitAuctionEvent = () => {};
-let emitPlayerSold = () => {};
-let emitTimerTick = () => {};
+let emitToAuction = () => {};
 
 export const setAuctionEmitters = (emitters) => {
-  emitAuctionEvent = emitters.emitAuctionEvent;
-  emitPlayerSold = emitters.emitPlayerSold;
-  emitTimerTick = emitters.emitTimerTick;
+  emitToAuction = emitters.emitToAuction || (() => {});
 };
 
-// @desc    Get all auctions
-// @route   GET /api/auctions
-// @access  Private
-export const getAuctions = asyncHandler(async (req, res) => {
-  const auctions = await Auction.find()
-    .populate('matchId', 'date time location venue status')
-    .populate('playerId', 'name role profilePhoto')
-    .populate('highestBidder', 'name logo color')
-    .sort({ createdAt: -1 });
+// In-memory timer store (server-authoritative)
+const auctionTimers = new Map(); // auctionId -> { timeout, interval, endsAt }
 
-  res.json({
-    success: true,
-    count: auctions.length,
-    data: auctions
-  });
-});
+const clearAuctionTimer = (auctionId) => {
+  const t = auctionTimers.get(auctionId);
+  if (!t) return;
+  if (t.timeout) clearTimeout(t.timeout);
+  if (t.interval) clearInterval(t.interval);
+  auctionTimers.delete(auctionId);
+};
 
-// @desc    Get current active auction
-// @route   GET /api/auctions/current
-// @access  Private
-export const getCurrentAuction = asyncHandler(async (req, res) => {
-  const auction = await Auction.findOne({ status: 'active' })
-    .populate('matchId', 'date time location venue status')
-    .populate('playerId', 'name nickname role basePrice profilePhoto stats battingStyle bowlingStyle')
-    .populate('highestBidder', 'name logo color');
+const startAuctionTimer = (auctionId, timerSeconds) => {
+  clearAuctionTimer(auctionId);
+  const endsAt = Date.now() + timerSeconds * 1000;
 
-  if (!auction) {
-    return res.json({
-      success: true,
-      data: null,
-      message: 'No active auction'
-    });
-  }
-
-  // Add real-time remaining time if active
-  let timeRemaining = auction.timeRemaining;
-  if (activeAuctions.has(auction._id.toString())) {
-    const activeData = activeAuctions.get(auction._id.toString());
-    timeRemaining = activeData.timeRemaining;
-  }
-
-  res.json({
-    success: true,
-    data: {
-      ...auction.toObject(),
-      timeRemaining
-    }
-  });
-});
-
-// @desc    Start auction for a player
-// @route   POST /api/auctions/start
-// @access  Private/Admin
-export const startAuction = asyncHandler(async (req, res) => {
-  const { playerId, matchId: providedMatchId, duration = 30 } = req.body;
-
-  // Check if there's already an active auction
-  const existingActive = await Auction.findOne({ status: 'active' });
-  if (existingActive) {
-    throw new AppError('There is already an active auction. End it first.', 400);
-  }
-
-  // Determine matchId (required by model). If not provided, fall back to latest match.
-  let matchId = providedMatchId;
-  if (!matchId) {
-    const latestMatch = await Match.findOne().sort({ date: -1, createdAt: -1 });
-    if (!latestMatch) {
-      throw new AppError('matchId is required (no matches exist to infer from)', 400);
-    }
-    matchId = latestMatch._id;
-  }
-
-  const player = await Player.findById(playerId);
-  if (!player) {
-    throw new AppError('Player not found', 404);
-  }
-
-  if (player.isSold) {
-    throw new AppError('Player is already sold', 400);
-  }
-
-  // Create new auction
-  const auction = await Auction.create({
-    matchId,
-    playerId,
-    currentPlayer: playerId,
-    playerName: player.name,
-    basePrice: player.basePrice,
-    highestBid: player.basePrice,
-    status: 'active',
-    startTime: new Date(),
-    duration,
-    timeRemaining: duration,
-    config: {
-      bidIncrement: 1000,
-      timerSeconds: duration
-    }
-  });
-
-  // Update player status
-  player.auctionStatus = 'active';
-  await player.save();
-
-  // Start timer
-  startAuctionTimer(auction._id.toString(), duration);
-
-  const populatedAuction = await Auction.findById(auction._id)
-    .populate('playerId', 'name nickname role basePrice profilePhoto stats battingStyle bowlingStyle')
-    .populate('matchId', 'date time location venue status');
-
-  // Emit auction started event
-  emitAuctionEvent('auction-started', {
-    auctionId: auction._id,
-    player: populatedAuction.playerId,
-    basePrice: auction.basePrice,
-    timeRemaining: duration
-  });
-
-  res.status(201).json({
-    success: true,
-    message: 'Auction started successfully',
-    data: populatedAuction
-  });
-});
-
-// @desc    Place a bid
-// @route   POST /api/auctions/:id/bid
-// @access  Private/Captain
-export const placeBid = asyncHandler(async (req, res) => {
-  const { amount } = req.body;
-  const auctionId = req.params.id;
-
-  const auction = await Auction.findById(auctionId);
-  if (!auction) {
-    throw new AppError('Auction not found', 404);
-  }
-
-  if (auction.status !== 'active') {
-    throw new AppError('Auction is not active', 400);
-  }
-
-  // Get team for the captain
-  const team = await Team.findOne({ captain: req.user._id });
-  if (!team) {
-    throw new AppError('You are not assigned to any team', 400);
-  }
-
-  // Validate bid amount
-  const minBidIncrement = 1000; // Minimum increment
-  const minBid = auction.highestBid + minBidIncrement;
-  
-  if (amount < minBid) {
-    throw new AppError(`Bid must be at least ${minBid}`, 400);
-  }
-
-  // Check team budget
-  if (amount > team.remainingBudget) {
-    throw new AppError('Insufficient budget', 400);
-  }
-
-  // Check if same team is bidding consecutively
-  if (auction.highestBidder && auction.highestBidder.toString() === team._id.toString()) {
-    throw new AppError('You are already the highest bidder', 400);
-  }
-
-  // Update auction
-  auction.highestBid = amount;
-  auction.highestBidder = team._id;
-  auction.highestBidderName = team.name;
-  
-  auction.bidHistory.push({
-    bidder: team._id,
-    bidderName: team.name,
-    amount,
-    timestamp: new Date()
-  });
-
-  // Reset timer if bid placed in last 5 seconds
-  const activeData = activeAuctions.get(auctionId);
-  if (activeData && activeData.timeRemaining <= 5) {
-    activeData.timeRemaining = 5;
-  }
-
-  await auction.save();
-
-  const updatedAuction = await Auction.findById(auctionId)
-    .populate('playerId', 'name role basePrice profilePhoto')
-    .populate('highestBidder', 'name logo color');
-
-  // Emit bid placed event to all clients
-  const bidEventData = {
-    auctionId: auction._id.toString(),
-    teamId: team._id.toString(),
-    teamName: team.name,
-    amount: amount,
-    highestBid: auction.highestBid,
-    highestBidder: auction.highestBidder?.toString(),
-    highestBidderName: auction.highestBidderName,
-    bidHistory: auction.bidHistory,
-    timestamp: new Date()
-  };
-  console.log('[Socket] Emitting bid-placed:', bidEventData);
-  emitAuctionEvent('bid-placed', bidEventData);
-
-  res.json({
-    success: true,
-    message: 'Bid placed successfully',
-    data: updatedAuction
-  });
-});
-
-// @desc    End auction
-// @route   POST /api/auctions/:id/end
-// @access  Private/Admin
-export const endAuction = asyncHandler(async (req, res) => {
-  const auctionId = req.params.id;
-
-  const auction = await Auction.findById(auctionId);
-  if (!auction) {
-    throw new AppError('Auction not found', 404);
-  }
-
-  if (auction.status !== 'active') {
-    throw new AppError('Auction is not active', 400);
-  }
-
-  // Clear timer
-  if (activeAuctions.has(auctionId)) {
-    clearInterval(activeAuctions.get(auctionId).interval);
-    activeAuctions.delete(auctionId);
-  }
-
-  const player = await Player.findById(auction.playerId);
-
-  if (auction.highestBidder) {
-    // Player sold
-    auction.status = 'closed';
-    auction.endTime = new Date();
-    auction.soldPrice = auction.highestBid;
-    auction.soldTo = auction.highestBidder;
-    auction.soldToName = auction.highestBidderName;
-
-    // Update player
-    player.isSold = true;
-    player.soldTo = auction.highestBidder;
-    player.soldPrice = auction.highestBid;
-    player.auctionStatus = 'sold';
-    // Append match-scoped auction history
-    if (auction.matchId) {
-      player.auctionHistory = player.auctionHistory || [];
-      player.auctionHistory.push({
-        matchId: auction.matchId,
-        teamId: auction.highestBidder,
-        soldFor: auction.highestBid,
-        unsold: false
-      });
-    }
-
-    // Update team
-    const team = await Team.findById(auction.highestBidder);
-    if (team) {
-      team.players.push(player._id);
-      team.remainingBudget -= auction.highestBid;
-      await team.save();
-    }
-  } else {
-    // Player unsold
-    auction.status = 'unsold';
-    auction.endTime = new Date();
-    player.auctionStatus = 'unsold';
-    if (auction.matchId) {
-      player.auctionHistory = player.auctionHistory || [];
-      player.auctionHistory.push({
-        matchId: auction.matchId,
-        teamId: null,
-        soldFor: 0,
-        unsold: true
-      });
-    }
-  }
-
-  await auction.save();
-  await player.save();
-
-  const finalAuction = await Auction.findById(auctionId)
-    .populate('playerId', 'name role profilePhoto')
-    .populate('highestBidder', 'name logo color')
-    .populate('soldTo', 'name logo color');
-
-  // Emit player sold event
-  if (auction.highestBidder) {
-    emitPlayerSold({
-      auctionId: auction._id.toString(),
-      playerId: player._id.toString(),
-      playerName: player.name,
-      soldPrice: auction.highestBid,
-      soldTo: auction.highestBidder.toString(),
-      soldToName: auction.highestBidderName
-    });
-  }
-
-  // Emit auction ended event
-  emitAuctionEvent('auction-ended', {
-    auctionId: auction._id.toString(),
-    status: auction.status,
-    soldPrice: auction.soldPrice,
-    soldTo: auction.soldTo,
-    soldToName: auction.soldToName
-  });
-
-  res.json({
-    success: true,
-    message: auction.highestBidder ? 'Auction completed - Player sold' : 'Auction ended - Player unsold',
-    data: finalAuction
-  });
-});
-
-// @desc    Get auction history
-// @route   GET /api/auctions/history
-// @access  Private
-export const getAuctionHistory = asyncHandler(async (req, res) => {
-  const auctions = await Auction.find({ status: { $in: ['closed', 'unsold', 'completed'] } })
-    .populate('matchId', 'date time location venue status')
-    .populate('playerId', 'name role profilePhoto')
-    .populate('highestBidder', 'name logo color')
-    .populate('soldTo', 'name logo color')
-    .sort({ endTime: -1 });
-
-  res.json({
-    success: true,
-    count: auctions.length,
-    data: auctions
-  });
-});
-
-// @desc    Reset all auctions
-// @route   POST /api/auctions/reset
-// @access  Private/Admin
-export const resetAuctions = asyncHandler(async (req, res) => {
-  // Clear all active timers
-  activeAuctions.forEach((data) => {
-    clearInterval(data.interval);
-  });
-  activeAuctions.clear();
-
-  // Reset all players
-  await Player.updateMany(
-    {},
-    {
-      $set: {
-        isSold: false,
-        soldTo: null,
-        soldPrice: null,
-        auctionStatus: 'pending'
-      }
-    }
-  );
-
-  // Reset all teams
-  const teams = await Team.find();
-  for (const team of teams) {
-    team.remainingBudget = team.totalBudget;
-    team.players = [];
-    await team.save();
-  }
-
-  // Delete all auctions
-  await Auction.deleteMany({});
-
-  res.json({
-    success: true,
-    message: 'All auctions reset successfully'
-  });
-});
-
-// Helper function to start auction timer
-function startAuctionTimer(auctionId, duration) {
-  let timeRemaining = duration;
-  
-  const interval = setInterval(async () => {
-    timeRemaining--;
-    
-    // Update in-memory store
-    activeAuctions.set(auctionId, { timeRemaining, interval });
-
-    // Emit timer tick to all clients
-    emitTimerTick(auctionId, timeRemaining);
-
-    // Update database every 5 seconds to reduce writes
-    if (timeRemaining % 5 === 0) {
-      await Auction.findByIdAndUpdate(auctionId, { timeRemaining });
-    }
-
-    if (timeRemaining <= 0) {
+  const interval = setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    emitToAuction(auctionId, 'timer_tick', { auctionId, remainingSeconds: remaining });
+    if (remaining <= 0) {
       clearInterval(interval);
-      activeAuctions.delete(auctionId);
-      
-      // Auto-end auction
-      await autoEndAuction(auctionId);
     }
   }, 1000);
 
-  activeAuctions.set(auctionId, { timeRemaining, interval });
-}
+  const timeout = setTimeout(async () => {
+    try {
+      await autoAdvancePlayer(auctionId);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('autoAdvancePlayer error:', e);
+    }
+  }, timerSeconds * 1000);
 
-// Helper function to auto-end auction
-async function autoEndAuction(auctionId) {
-  try {
-    const auction = await Auction.findById(auctionId);
-    if (!auction || auction.status !== 'active') return;
+  auctionTimers.set(auctionId, { timeout, interval, endsAt });
+  return endsAt;
+};
 
-    const player = await Player.findById(auction.playerId);
+const shuffle = (arr) => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
-    if (auction.highestBidder) {
-      auction.status = 'closed';
-      auction.endTime = new Date();
-      auction.soldPrice = auction.highestBid;
-      auction.soldTo = auction.highestBidder;
-      auction.soldToName = auction.highestBidderName;
+const getMatchTeams = async (match) => {
+  const teamIds = [match.teamA, match.teamB].filter(Boolean);
+  if (teamIds.length < 2) return [];
+  return Team.find({ _id: { $in: teamIds } })
+    .populate('captain', 'name email role')
+    .populate('players', 'name nickname role soldPrice');
+};
 
-      player.isSold = true;
-      player.soldTo = auction.highestBidder;
-      player.soldPrice = auction.highestBid;
-      player.auctionStatus = 'sold';
-      if (auction.matchId) {
-        player.auctionHistory = player.auctionHistory || [];
-        player.auctionHistory.push({
-          matchId: auction.matchId,
-          teamId: auction.highestBidder,
-          soldFor: auction.highestBid,
-          unsold: false
+const getTeamForCaptainInMatch = async (match, captainId) => {
+  return Team.findOne({ captain: captainId, _id: { $in: [match.teamA, match.teamB] } })
+    .populate('captain', 'name email role');
+};
+
+// @desc    Create auction for a match
+// @route   POST /api/matches/:matchId/auction
+// @access  Private/Admin
+export const createAuction = asyncHandler(async (req, res) => {
+  const { matchId } = req.params;
+  const { budgetPerTeam, basePrice, bidIncrement, timerSeconds } = req.body;
+
+  const match = await Match.findById(matchId);
+  if (!match) throw new AppError('Match not found', 404);
+
+  if (!['setup', 'auction'].includes(match.status)) {
+    throw new AppError("Match must be in 'setup' or 'auction' status", 400);
+  }
+
+  if (!Array.isArray(match.playerPool) || match.playerPool.length < 2) {
+    throw new AppError('Match must have a playerPool set with at least 2 players', 400);
+  }
+
+  const teams = await getMatchTeams(match);
+  if (teams.length < 2) {
+    throw new AppError('Match must have at least 2 teams', 400);
+  }
+
+  const poolPlayers = await Player.find({ _id: { $in: match.playerPool }, isActive: true }).select('_id');
+  if (poolPlayers.length !== match.playerPool.length) {
+    throw new AppError('Match playerPool contains invalid or inactive players', 400);
+  }
+
+  const existing = await Auction.findOne({ matchId: match._id, status: { $in: ['pending', 'active', 'paused', 'round2'] } });
+  if (existing) {
+    throw new AppError('An auction already exists for this match', 400);
+  }
+
+  const queue = shuffle(match.playerPool.map(String));
+
+  const auction = await Auction.create({
+    matchId: match._id,
+    playerPool: match.playerPool,
+    queue,
+    unsoldPool: [],
+    currentPlayer: null,
+    bids: [],
+    bidHistory: [],
+    highestBid: 0,
+    highestBidder: null,
+    highestBidderName: '',
+    config: {
+      teams: teams.length,
+      budgetPerTeam: Number(budgetPerTeam) || 0,
+      basePrice: Number(basePrice) || 0,
+      bidIncrement: Number(bidIncrement) || 0,
+      timerSeconds: Number(timerSeconds) || 15
+    },
+    status: 'pending',
+    startTime: null,
+    endTime: null
+  });
+
+  match.status = 'auction';
+  await match.save();
+
+  res.status(201).json({ success: true, data: auction });
+});
+
+// @desc    Start auction (auto-flow)
+// @route   POST /api/auctions/:id/start
+// @access  Private/Admin
+export const startAuction = asyncHandler(async (req, res) => {
+  const auctionId = req.params.id;
+  const auction = await Auction.findById(auctionId);
+  if (!auction) throw new AppError('Auction not found', 404);
+
+  if (!['pending', 'paused'].includes(auction.status)) {
+    throw new AppError("Auction status must be 'pending' or 'paused'", 400);
+  }
+
+  if (!auction.queue?.length) {
+    throw new AppError('Auction queue is empty', 400);
+  }
+
+  const nextPlayerId = auction.queue.shift();
+  auction.currentPlayer = nextPlayerId;
+  auction.playerId = nextPlayerId; // legacy
+  const p = await Player.findById(nextPlayerId).select('name nickname role battingStyle bowlingStyle basePrice profilePhoto');
+  auction.playerName = p?.nickname || p?.name || '';
+  auction.basePrice = auction.config.basePrice || p?.basePrice || 0;
+  auction.highestBid = 0;
+  auction.highestBidder = null;
+  auction.highestBidderName = '';
+  auction.bids = [];
+  auction.bidHistory = [];
+  auction.status = 'active';
+  auction.startTime = auction.startTime || new Date();
+  auction.timeRemaining = auction.config.timerSeconds;
+
+  await auction.save();
+
+  const endsAt = startAuctionTimer(auction._id.toString(), auction.config.timerSeconds);
+
+  const populated = await Auction.findById(auction._id).populate('currentPlayer', 'name nickname role battingStyle bowlingStyle profilePhoto');
+
+  emitToAuction(auction._id.toString(), 'auction_started', {
+    auctionId: auction._id.toString(),
+    currentPlayer: populated.currentPlayer,
+    queueRemaining: populated.queue.length,
+    timerSeconds: auction.config.timerSeconds,
+    endsAt
+  });
+
+  res.json({ success: true, data: populated });
+});
+
+// @desc    Place bid
+// @route   POST /api/auctions/:id/bid
+// @access  Private/Captain
+export const placeBid = asyncHandler(async (req, res) => {
+  const auctionId = req.params.id;
+  const { amount } = req.body;
+  const bidAmount = Number(amount);
+  if (!Number.isFinite(bidAmount) || bidAmount <= 0) {
+    throw new AppError('amount must be a positive number', 400);
+  }
+
+  const auction = await Auction.findById(auctionId);
+  if (!auction) throw new AppError('Auction not found', 404);
+  if (auction.status !== 'active') throw new AppError('Auction is not active', 400);
+  if (!auction.currentPlayer) throw new AppError('No current player in auction', 400);
+
+  const match = await Match.findById(auction.matchId);
+  if (!match) throw new AppError('Match not found for this auction', 404);
+
+  const team = await getTeamForCaptainInMatch(match, req.user._id);
+  if (!team) throw new AppError('You are not assigned to a team in this match', 400);
+
+  const min = auction.highestBid > 0
+    ? auction.highestBid + (auction.config.bidIncrement || 0)
+    : (auction.config.basePrice || 0);
+
+  if (bidAmount < min) {
+    throw new AppError(`Bid must be at least ${min}`, 400);
+  }
+
+  if (bidAmount > team.remainingBudget) {
+    throw new AppError('Insufficient budget', 400);
+  }
+
+  if (auction.highestBidder && String(auction.highestBidder) === String(team._id)) {
+    throw new AppError('You are already the highest bidder', 400);
+  }
+
+  auction.bids.push({
+    teamId: team._id,
+    captainId: req.user._id,
+    amount: bidAmount,
+    timestamp: new Date()
+  });
+
+  // keep legacy bidHistory for existing UI
+  auction.bidHistory.push({
+    bidder: team._id,
+    bidderName: team.name,
+    amount: bidAmount,
+    timestamp: new Date()
+  });
+
+  auction.highestBid = bidAmount;
+  auction.highestBidder = team._id;
+  auction.highestBidderName = team.name;
+
+  await auction.save();
+
+  const endsAt = startAuctionTimer(auction._id.toString(), auction.config.timerSeconds);
+
+  emitToAuction(auction._id.toString(), 'new_bid', {
+    auctionId: auction._id.toString(),
+    amount: bidAmount,
+    teamId: team._id.toString(),
+    teamName: team.name,
+    remainingBudget: team.remainingBudget,
+    timerSeconds: auction.config.timerSeconds,
+    endsAt
+  });
+
+  const state = await getAuctionStateInternal(auction._id.toString());
+  res.json({ success: true, data: state });
+});
+
+const finalizeSold = async ({ auction, match, winningTeam, soldFor, player }) => {
+  // Update player
+  player.isSold = true;
+  player.soldTo = winningTeam._id;
+  player.soldPrice = soldFor;
+  player.auctionStatus = 'sold';
+  player.auctionHistory = player.auctionHistory || [];
+  player.auctionHistory.push({
+    matchId: match._id,
+    teamId: winningTeam._id,
+    soldFor,
+    unsold: false
+  });
+  await player.save();
+
+  // Update team
+  if (!winningTeam.players.map(String).includes(String(player._id))) {
+    winningTeam.players.push(player._id);
+  }
+  winningTeam.remainingBudget = Math.max(0, (winningTeam.remainingBudget || 0) - soldFor);
+  await winningTeam.save();
+
+  emitToAuction(auction._id.toString(), 'player_sold', {
+    auctionId: auction._id.toString(),
+    player,
+    team: winningTeam,
+    amount: soldFor
+  });
+};
+
+const finalizeUnsold = async ({ auction, match, player }) => {
+  auction.unsoldPool = auction.unsoldPool || [];
+  auction.unsoldPool.push(player._id);
+  player.auctionStatus = 'unsold';
+  player.auctionHistory = player.auctionHistory || [];
+  player.auctionHistory.push({
+    matchId: match._id,
+    teamId: null,
+    soldFor: 0,
+    unsold: true
+  });
+  await player.save();
+
+  emitToAuction(auction._id.toString(), 'player_unsold', {
+    auctionId: auction._id.toString(),
+    player
+  });
+};
+
+// internal async function
+async function autoAdvancePlayer(auctionId, forcedBid = null) {
+  clearAuctionTimer(auctionId);
+
+  const auction = await Auction.findById(auctionId);
+  if (!auction) return;
+  if (auction.status !== 'active') return;
+
+  const match = await Match.findById(auction.matchId);
+  if (!match) return;
+
+  const currentPlayerId = auction.currentPlayer;
+  const player = currentPlayerId ? await Player.findById(currentPlayerId) : null;
+  if (!player) return;
+
+  // Determine winning bid
+  let winning = null;
+  if (forcedBid) {
+    winning = forcedBid;
+  } else if (Array.isArray(auction.bids) && auction.bids.length) {
+    winning = auction.bids.reduce((best, b) => (b.amount > best.amount ? b : best), auction.bids[0]);
+  }
+
+  if (winning) {
+    const winningTeam = await Team.findById(winning.teamId).populate('players', 'name nickname role');
+    if (winningTeam) {
+      await finalizeSold({
+        auction,
+        match,
+        winningTeam,
+        soldFor: winning.amount,
+        player
+      });
+    }
+  } else {
+    await finalizeUnsold({ auction, match, player });
+  }
+
+  // Advance to next player / round2 / close
+  auction.bids = [];
+  auction.bidHistory = [];
+  auction.highestBid = 0;
+  auction.highestBidder = null;
+  auction.highestBidderName = '';
+
+  if (auction.queue?.length) {
+    const nextPlayerId = auction.queue.shift();
+    auction.currentPlayer = nextPlayerId;
+    auction.playerId = nextPlayerId;
+    const nextPlayer = await Player.findById(nextPlayerId).select('name nickname basePrice');
+    auction.playerName = nextPlayer?.nickname || nextPlayer?.name || '';
+    auction.basePrice = auction.config.basePrice || nextPlayer?.basePrice || 0;
+    auction.timeRemaining = auction.config.timerSeconds;
+    await auction.save();
+
+    const endsAt = startAuctionTimer(auction._id.toString(), auction.config.timerSeconds);
+    const populated = await Auction.findById(auction._id).populate('currentPlayer', 'name nickname role battingStyle bowlingStyle profilePhoto');
+
+    emitToAuction(auction._id.toString(), 'next_player', {
+      auctionId: auction._id.toString(),
+      currentPlayer: populated.currentPlayer,
+      queueRemaining: populated.queue.length,
+      timerSeconds: auction.config.timerSeconds,
+      endsAt
+    });
+    return;
+  }
+
+  // queue empty
+  if (auction.status === 'active') {
+    if (auction.unsoldPool?.length) {
+      auction.status = 'round2';
+      auction.queue = shuffle(auction.unsoldPool.map(String));
+      auction.unsoldPool = [];
+      auction.config.basePrice = Math.floor((auction.config.basePrice || 0) / 2);
+      await auction.save();
+
+      emitToAuction(auction._id.toString(), 'round2_started', {
+        auctionId: auction._id.toString(),
+        basePrice: auction.config.basePrice,
+        queueRemaining: auction.queue.length
+      });
+
+      // Immediately move to next player in round2
+      if (auction.queue.length) {
+        const nextPlayerId = auction.queue.shift();
+        auction.currentPlayer = nextPlayerId;
+        auction.playerId = nextPlayerId;
+        const nextPlayer = await Player.findById(nextPlayerId).select('name nickname basePrice');
+        auction.playerName = nextPlayer?.nickname || nextPlayer?.name || '';
+        auction.basePrice = auction.config.basePrice || nextPlayer?.basePrice || 0;
+        auction.status = 'active';
+        auction.timeRemaining = auction.config.timerSeconds;
+        await auction.save();
+
+        const endsAt = startAuctionTimer(auction._id.toString(), auction.config.timerSeconds);
+        const populated = await Auction.findById(auction._id).populate('currentPlayer', 'name nickname role battingStyle bowlingStyle profilePhoto');
+        emitToAuction(auction._id.toString(), 'next_player', {
+          auctionId: auction._id.toString(),
+          currentPlayer: populated.currentPlayer,
+          queueRemaining: populated.queue.length,
+          timerSeconds: auction.config.timerSeconds,
+          endsAt
         });
       }
-
-      const team = await Team.findById(auction.highestBidder);
-      if (team) {
-        team.players.push(player._id);
-        team.remainingBudget -= auction.highestBid;
-        await team.save();
-      }
-    } else {
-      auction.status = 'unsold';
-      auction.endTime = new Date();
-      player.auctionStatus = 'unsold';
-      if (auction.matchId) {
-        player.auctionHistory = player.auctionHistory || [];
-        player.auctionHistory.push({
-          matchId: auction.matchId,
-          teamId: null,
-          soldFor: 0,
-          unsold: true
-        });
-      }
+      return;
     }
 
+    auction.status = 'closed';
+    auction.currentPlayer = null;
+    auction.playerId = null;
+    auction.playerName = '';
+    auction.endTime = new Date();
     await auction.save();
-    await player.save();
-  } catch (error) {
-    console.error('Auto-end auction error:', error);
+
+    match.status = 'auction_done';
+    await match.save();
+
+    emitToAuction(auction._id.toString(), 'auction_closed', { auctionId: auction._id.toString() });
   }
 }
 
-// Export for socket use
-export { activeAuctions };
+// @desc    Pause auction
+// @route   POST /api/auctions/:id/pause
+// @access  Private/Admin
+export const pauseAuction = asyncHandler(async (req, res) => {
+  const auction = await Auction.findById(req.params.id);
+  if (!auction) throw new AppError('Auction not found', 404);
+  clearAuctionTimer(auction._id.toString());
+  auction.status = 'paused';
+  await auction.save();
+  emitToAuction(auction._id.toString(), 'auction_paused', { auctionId: auction._id.toString() });
+  res.json({ success: true, data: auction });
+});
+
+// @desc    Admin override current player winner
+// @route   POST /api/auctions/:id/override
+// @access  Private/Admin
+export const overrideBid = asyncHandler(async (req, res) => {
+  const { teamId, amount } = req.body;
+  if (!teamId || !amount) throw new AppError('teamId and amount are required', 400);
+  const auction = await Auction.findById(req.params.id);
+  if (!auction) throw new AppError('Auction not found', 404);
+  if (auction.status !== 'active') throw new AppError('Auction is not active', 400);
+  clearAuctionTimer(auction._id.toString());
+
+  emitToAuction(auction._id.toString(), 'admin_override', { auctionId: auction._id.toString(), teamId, amount });
+  await autoAdvancePlayer(auction._id.toString(), { teamId, amount: Number(amount) });
+  const state = await getAuctionStateInternal(auction._id.toString());
+  res.json({ success: true, data: state });
+});
+
+// @desc    Skip current player (send to unsoldPool)
+// @route   POST /api/auctions/:id/skip
+// @access  Private/Admin
+export const skipCurrentPlayer = asyncHandler(async (req, res) => {
+  const auction = await Auction.findById(req.params.id);
+  if (!auction) throw new AppError('Auction not found', 404);
+  if (auction.status !== 'active') throw new AppError('Auction is not active', 400);
+  clearAuctionTimer(auction._id.toString());
+
+  emitToAuction(auction._id.toString(), 'player_skipped', { auctionId: auction._id.toString(), playerId: auction.currentPlayer });
+  // Advance with no bids, but force "no bid" behavior by clearing bids
+  auction.bids = [];
+  await auction.save();
+  await autoAdvancePlayer(auction._id.toString(), null);
+  const state = await getAuctionStateInternal(auction._id.toString());
+  res.json({ success: true, data: state });
+});
+
+async function getAuctionStateInternal(auctionId) {
+  const auction = await Auction.findById(auctionId)
+    .populate('currentPlayer', 'name nickname role battingStyle bowlingStyle profilePhoto careerStats')
+    .populate('unsoldPool', 'name nickname role battingStyle bowlingStyle profilePhoto');
+
+  if (!auction) return null;
+
+  const match = await Match.findById(auction.matchId);
+  const teams = match ? await getMatchTeams(match) : [];
+
+  // Remaining count only; queue itself can be large.
+  return {
+    auctionId: auction._id,
+    matchId: auction.matchId,
+    status: auction.status,
+    config: auction.config,
+    currentPlayer: auction.currentPlayer,
+    queueRemaining: auction.queue?.length || 0,
+    unsoldPool: auction.unsoldPool || [],
+    bids: auction.bids || [],
+    highestBid: auction.highestBid,
+    highestBidder: auction.highestBidder,
+    highestBidderName: auction.highestBidderName,
+    teams
+  };
+}
+
+// @desc    Get auction state for initial page load
+// @route   GET /api/auctions/:id/state
+// @access  Private
+export const getAuctionState = asyncHandler(async (req, res) => {
+  const state = await getAuctionStateInternal(req.params.id);
+  if (!state) throw new AppError('Auction not found', 404);
+  res.json({ success: true, data: state });
+});
 

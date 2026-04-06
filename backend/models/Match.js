@@ -23,6 +23,8 @@ const deliverySchema = new mongoose.Schema({
   },
   dismissedBatsmanId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
   dismissedBatsmanName: { type: String, default: '' },
+  nextBatsmanId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
+  nextBatsmanName: { type: String, default: '' },
   fielderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
   fielderName: { type: String, default: '' },
   isBoundary: { type: Boolean, default: false },
@@ -54,6 +56,9 @@ const inningsSchema = new mongoose.Schema({
   inningsNumber: { type: Number, enum: [1, 2], required: true },
   battingTeam: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
   bowlingTeam: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
+  startingStrikerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
+  startingNonStrikerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
+  startingBowlerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
   totalRuns: { type: Number, default: 0 },
   totalWickets: { type: Number, default: 0 },
   totalBalls: { type: Number, default: 0 }, // legal deliveries only

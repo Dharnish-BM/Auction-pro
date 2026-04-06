@@ -21,6 +21,13 @@ const bidHistorySchema = new mongoose.Schema({
   }
 }, { _id: true });
 
+const bidSchema = new mongoose.Schema({
+  teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
+  captainId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  amount: { type: Number, required: true, min: [0, 'Bid amount cannot be negative'] },
+  timestamp: { type: Date, default: Date.now }
+}, { _id: true });
+
 const auctionSchema = new mongoose.Schema({
   matchId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -44,6 +51,7 @@ const auctionSchema = new mongoose.Schema({
     ref: 'Player',
     default: null
   },
+  bids: [bidSchema],
   config: {
     teams: { type: Number, default: 0 },
     budgetPerTeam: { type: Number, default: 0 },
@@ -54,15 +62,15 @@ const auctionSchema = new mongoose.Schema({
   playerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Player',
-    required: [true, 'Please specify the player for auction']
+    default: null
   },
   playerName: {
     type: String,
-    required: true
+    default: ''
   },
   basePrice: {
     type: Number,
-    required: true
+    default: 0
   },
   highestBid: {
     type: Number,
@@ -120,6 +128,7 @@ const auctionSchema = new mongoose.Schema({
 // Index for querying active auctions
 auctionSchema.index({ status: 1 });
 auctionSchema.index({ playerId: 1 });
+auctionSchema.index({ matchId: 1 });
 
 const Auction = mongoose.model('Auction', auctionSchema);
 

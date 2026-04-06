@@ -22,7 +22,7 @@ import userRoutes from './routes/users.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // Import socket handlers
-import { emitAuctionEvent, emitPlayerSold, emitTimerTick, initAuctionSocket } from './sockets/auctionSocket.js';
+import { emitToAuction, initAuctionSocket } from './sockets/auctionSocket.js';
 import { initScoreboardSocket } from './sockets/scoreboardSocket.js';
 
 // Import auction controller to inject emitters
@@ -49,9 +49,7 @@ initScoreboardSocket(io);
 
 // Inject socket emitters into auction controller to avoid circular dependency
 setAuctionEmitters({
-  emitAuctionEvent,
-  emitPlayerSold,
-  emitTimerTick
+  emitToAuction
 });
 
 // Middleware
