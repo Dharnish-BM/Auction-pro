@@ -51,6 +51,27 @@ export const matchService = {
     return response.data;
   },
 
+  // Live scoring (admin)
+  startInnings: async (id, data) => {
+    const response = await api.post(`/matches/${id}/innings/start`, data);
+    return response.data;
+  },
+
+  logDelivery: async (id, data) => {
+    const response = await api.post(`/matches/${id}/delivery`, data);
+    return response.data;
+  },
+
+  undoLastDelivery: async (id) => {
+    const response = await api.delete(`/matches/${id}/delivery/last`);
+    return response.data;
+  },
+
+  setNextBowler: async (id, bowlerId) => {
+    const response = await api.post(`/matches/${id}/bowler`, { bowlerId });
+    return response.data;
+  },
+
   // Create match (admin only)
   create: async (data) => {
     const response = await api.post('/matches', data);

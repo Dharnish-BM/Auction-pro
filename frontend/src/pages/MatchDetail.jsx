@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Loader } from '../components/common/Loader.jsx';
 import { AuctionRoom } from '../components/AuctionRoom.jsx';
+import { ScoringPanel } from '../components/ScoringPanel.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { matchService } from '../services/matchService.js';
 
@@ -355,10 +356,29 @@ export const MatchDetail = () => {
         <div className="sports-card">
           {['setup', 'auction'].includes(matchStatus) && <p className="text-gray-400">Match not started.</p>}
           {['live', 'innings_break'].includes(matchStatus) && (
-            <p className="text-gray-400">LiveScoreboard integration lands in Prompt 8.</p>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-400">
+                Admin Scoring Panel
+              </p>
+              {isAdmin() ? (
+                <ScoringPanel matchId={id} />
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-gray-300">Live scoring is controlled by the admin from turf.</p>
+                  <Link to={`/matches/${id}/live`} className="inline-flex px-4 py-2 rounded-lg bg-neon-green text-sports-darker font-semibold">
+                    Open Public Live Scoreboard
+                  </Link>
+                </div>
+              )}
+            </div>
           )}
           {matchStatus === 'completed' && (
-            <p className="text-gray-400">Static scorecard UI will be improved; backend scorecard endpoint is ready.</p>
+            <div className="space-y-2">
+              <p className="text-gray-300">Match completed. View full public scorecard.</p>
+              <Link to={`/matches/${id}/live`} className="inline-flex px-4 py-2 rounded-lg bg-neon-blue text-sports-darker font-semibold">
+                Open Final Scoreboard
+              </Link>
+            </div>
           )}
         </div>
       )}
