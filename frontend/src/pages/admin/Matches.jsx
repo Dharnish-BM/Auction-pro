@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import {
     Calendar,
@@ -53,7 +54,7 @@ export const Matches = () => {
       const params = statusFilter ? { status: statusFilter } : {};
       const response = await matchService.getAll(params);
       setMatches(response.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to fetch matches');
     } finally {
       setLoading(false);
@@ -64,8 +65,8 @@ export const Matches = () => {
     try {
       const response = await teamService.getAll();
       setTeams(response.data);
-    } catch (error) {
-      console.error('Failed to fetch teams:', error);
+    } catch (_error) {
+      console.error('Failed to fetch teams:', _error);
     }
   };
 

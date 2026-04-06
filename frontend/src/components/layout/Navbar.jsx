@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     Calendar,
@@ -16,7 +17,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 export const Navbar = () => {
-  const { user, isAuthenticated, logout, isAdmin, isCaptain } = useAuth();
+  const { user, isAuthenticated, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

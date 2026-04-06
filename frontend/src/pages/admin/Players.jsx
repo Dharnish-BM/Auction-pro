@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import {
     Edit2,
@@ -50,7 +51,7 @@ export const Players = () => {
       setLoading(true);
       const response = await playerService.getAll();
       setPlayers(response.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to fetch players');
     } finally {
       setLoading(false);

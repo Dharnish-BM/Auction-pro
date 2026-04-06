@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import {
     Activity,
@@ -77,25 +78,25 @@ export const Dashboard = () => {
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatCard
-              icon={Users}
+              Icon={Users}
               label="Total Players"
               value={stats?.totalPlayers || 0}
               color="neon-green"
             />
             <StatCard
-              icon={Trophy}
+              Icon={Trophy}
               label="Sold Players"
               value={stats?.soldPlayers || 0}
               color="gold"
             />
             <StatCard
-              icon={DollarSign}
+              Icon={DollarSign}
               label="Money Spent"
               value={`₹${(stats?.totalMoneySpent || 0).toLocaleString()}`}
               color="neon-blue"
             />
             <StatCard
-              icon={Activity}
+              Icon={Activity}
               label="Unsold Players"
               value={stats?.unsoldPlayers || 0}
               color="purple"
@@ -105,21 +106,21 @@ export const Dashboard = () => {
           {/* Quick Actions */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             <QuickActionCard
-              icon={Gavel}
+              Icon={Gavel}
               title="Start Auction"
               description="Begin a new player auction"
               to="/auction"
               color="neon-green"
             />
             <QuickActionCard
-              icon={Users}
+              Icon={Users}
               title="Manage Players"
               description="Add or edit player profiles"
               to="/admin/players"
               color="gold"
             />
             <QuickActionCard
-              icon={Calendar}
+              Icon={Calendar}
               title="Schedule Matches"
               description="Create upcoming fixtures"
               to="/matches"
@@ -209,14 +210,14 @@ export const Dashboard = () => {
           {/* Quick Actions */}
           <div className="grid md:grid-cols-2 gap-6">
             <QuickActionCard
-              icon={Gavel}
+              Icon={Gavel}
               title="Join Auction"
               description="Bid on available players"
               to="/auction"
               color="neon-green"
             />
             <QuickActionCard
-              icon={Calendar}
+              Icon={Calendar}
               title="Upcoming Matches"
               description={`${upcomingMatches.length} matches scheduled`}
               to="/matches"
@@ -242,14 +243,14 @@ export const Dashboard = () => {
 
         <div className="grid md:grid-cols-2 gap-6">
           <QuickActionCard
-            icon={Gavel}
+            Icon={Gavel}
             title="Live Auction"
             description="Watch the auction in real-time"
             to="/auction"
             color="neon-green"
           />
           <QuickActionCard
-            icon={Trophy}
+            Icon={Trophy}
             title="View Teams"
             description="See all team compositions"
             to="/teams"
@@ -262,7 +263,8 @@ export const Dashboard = () => {
 };
 
 // Helper Components
-const StatCard = ({ icon: Icon, label, value, color }) => {
+// eslint-disable-next-line no-unused-vars
+const StatCard = ({ Icon, label, value, color }) => {
   const colorClasses = {
     'neon-green': 'text-neon-green bg-neon-green/10',
     'gold': 'text-gold bg-gold/10',
@@ -284,7 +286,8 @@ const StatCard = ({ icon: Icon, label, value, color }) => {
   );
 };
 
-const QuickActionCard = ({ icon: Icon, title, description, to, color }) => {
+// eslint-disable-next-line no-unused-vars
+const QuickActionCard = ({ Icon, title, description, to, color }) => {
   const colorClasses = {
     'neon-green': 'group-hover:text-neon-green group-hover:bg-neon-green/10',
     'gold': 'group-hover:text-gold group-hover:bg-gold/10',

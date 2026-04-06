@@ -1,5 +1,6 @@
 import { AppError, asyncHandler } from '../middleware/errorHandler.js';
 import Auction from '../models/Auction.js';
+import Match from '../models/Match.js';
 import Player from '../models/Player.js';
 import Team from '../models/Team.js';
 
@@ -22,6 +23,7 @@ export const setAuctionEmitters = (emitters) => {
 // @access  Private
 export const getAuctions = asyncHandler(async (req, res) => {
   const auctions = await Auction.find()
+    .populate('matchId', 'date time location venue status')
     .populate('playerId', 'name role profilePhoto')
     .populate('highestBidder', 'name logo color')
     .sort({ createdAt: -1 });
@@ -38,7 +40,8 @@ export const getAuctions = asyncHandler(async (req, res) => {
 // @access  Private
 export const getCurrentAuction = asyncHandler(async (req, res) => {
   const auction = await Auction.findOne({ status: 'active' })
-    .populate('playerId', 'name role basePrice profilePhoto stats battingStyle bowlingStyle')
+    .populate('matchId', 'date time location venue status')
+    .populate('playerId', 'name nickname role basePrice profilePhoto stats battingStyle bowlingStyle')
     .populate('highestBidder', 'name logo color');
 
   if (!auction) {
@@ -69,12 +72,22 @@ export const getCurrentAuction = asyncHandler(async (req, res) => {
 // @route   POST /api/auctions/start
 // @access  Private/Admin
 export const startAuction = asyncHandler(async (req, res) => {
-  const { playerId, duration = 30 } = req.body;
+  const { playerId, matchId: providedMatchId, duration = 30 } = req.body;
 
   // Check if there's already an active auction
   const existingActive = await Auction.findOne({ status: 'active' });
   if (existingActive) {
     throw new AppError('There is already an active auction. End it first.', 400);
+  }
+
+  // Determine matchId (required by model). If not provided, fall back to latest match.
+  let matchId = providedMatchId;
+  if (!matchId) {
+    const latestMatch = await Match.findOne().sort({ date: -1, createdAt: -1 });
+    if (!latestMatch) {
+      throw new AppError('matchId is required (no matches exist to infer from)', 400);
+    }
+    matchId = latestMatch._id;
   }
 
   const player = await Player.findById(playerId);
@@ -88,14 +101,20 @@ export const startAuction = asyncHandler(async (req, res) => {
 
   // Create new auction
   const auction = await Auction.create({
+    matchId,
     playerId,
+    currentPlayer: playerId,
     playerName: player.name,
     basePrice: player.basePrice,
     highestBid: player.basePrice,
     status: 'active',
     startTime: new Date(),
     duration,
-    timeRemaining: duration
+    timeRemaining: duration,
+    config: {
+      bidIncrement: 1000,
+      timerSeconds: duration
+    }
   });
 
   // Update player status
@@ -106,7 +125,8 @@ export const startAuction = asyncHandler(async (req, res) => {
   startAuctionTimer(auction._id.toString(), duration);
 
   const populatedAuction = await Auction.findById(auction._id)
-    .populate('playerId', 'name role basePrice profilePhoto stats battingStyle bowlingStyle');
+    .populate('playerId', 'name nickname role basePrice profilePhoto stats battingStyle bowlingStyle')
+    .populate('matchId', 'date time location venue status');
 
   // Emit auction started event
   emitAuctionEvent('auction-started', {
@@ -234,7 +254,7 @@ export const endAuction = asyncHandler(async (req, res) => {
 
   if (auction.highestBidder) {
     // Player sold
-    auction.status = 'completed';
+    auction.status = 'closed';
     auction.endTime = new Date();
     auction.soldPrice = auction.highestBid;
     auction.soldTo = auction.highestBidder;
@@ -245,6 +265,16 @@ export const endAuction = asyncHandler(async (req, res) => {
     player.soldTo = auction.highestBidder;
     player.soldPrice = auction.highestBid;
     player.auctionStatus = 'sold';
+    // Append match-scoped auction history
+    if (auction.matchId) {
+      player.auctionHistory = player.auctionHistory || [];
+      player.auctionHistory.push({
+        matchId: auction.matchId,
+        teamId: auction.highestBidder,
+        soldFor: auction.highestBid,
+        unsold: false
+      });
+    }
 
     // Update team
     const team = await Team.findById(auction.highestBidder);
@@ -258,6 +288,15 @@ export const endAuction = asyncHandler(async (req, res) => {
     auction.status = 'unsold';
     auction.endTime = new Date();
     player.auctionStatus = 'unsold';
+    if (auction.matchId) {
+      player.auctionHistory = player.auctionHistory || [];
+      player.auctionHistory.push({
+        matchId: auction.matchId,
+        teamId: null,
+        soldFor: 0,
+        unsold: true
+      });
+    }
   }
 
   await auction.save();
@@ -300,7 +339,8 @@ export const endAuction = asyncHandler(async (req, res) => {
 // @route   GET /api/auctions/history
 // @access  Private
 export const getAuctionHistory = asyncHandler(async (req, res) => {
-  const auctions = await Auction.find({ status: { $in: ['completed', 'unsold'] } })
+  const auctions = await Auction.find({ status: { $in: ['closed', 'unsold', 'completed'] } })
+    .populate('matchId', 'date time location venue status')
     .populate('playerId', 'name role profilePhoto')
     .populate('highestBidder', 'name logo color')
     .populate('soldTo', 'name logo color')
@@ -392,7 +432,7 @@ async function autoEndAuction(auctionId) {
     const player = await Player.findById(auction.playerId);
 
     if (auction.highestBidder) {
-      auction.status = 'completed';
+      auction.status = 'closed';
       auction.endTime = new Date();
       auction.soldPrice = auction.highestBid;
       auction.soldTo = auction.highestBidder;
@@ -402,6 +442,15 @@ async function autoEndAuction(auctionId) {
       player.soldTo = auction.highestBidder;
       player.soldPrice = auction.highestBid;
       player.auctionStatus = 'sold';
+      if (auction.matchId) {
+        player.auctionHistory = player.auctionHistory || [];
+        player.auctionHistory.push({
+          matchId: auction.matchId,
+          teamId: auction.highestBidder,
+          soldFor: auction.highestBid,
+          unsold: false
+        });
+      }
 
       const team = await Team.findById(auction.highestBidder);
       if (team) {
@@ -413,6 +462,15 @@ async function autoEndAuction(auctionId) {
       auction.status = 'unsold';
       auction.endTime = new Date();
       player.auctionStatus = 'unsold';
+      if (auction.matchId) {
+        player.auctionHistory = player.auctionHistory || [];
+        player.auctionHistory.push({
+          matchId: auction.matchId,
+          teamId: null,
+          soldFor: 0,
+          unsold: true
+        });
+      }
     }
 
     await auction.save();

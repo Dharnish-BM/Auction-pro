@@ -8,7 +8,7 @@ import Team from '../models/Team.js';
 export const getPlayers = asyncHandler(async (req, res) => {
   const { role, status, search, sortBy } = req.query;
   
-  let query = {};
+  let query = { isActive: true };
   
   // Filter by role
   if (role) {
@@ -66,22 +66,26 @@ export const getPlayer = asyncHandler(async (req, res) => {
 export const createPlayer = asyncHandler(async (req, res) => {
   const {
     name,
+    nickname,
     role,
     basePrice,
     profilePhoto,
     battingStyle,
     bowlingStyle,
-    stats
+    stats,
+    isActive
   } = req.body;
 
   const player = await Player.create({
     name,
+    nickname: nickname || name,
     role,
     basePrice,
     profilePhoto,
     battingStyle,
     bowlingStyle,
-    stats
+    stats,
+    ...(typeof isActive === 'boolean' ? { isActive } : {})
   });
 
   res.status(201).json({
@@ -137,11 +141,12 @@ export const deletePlayer = asyncHandler(async (req, res) => {
     throw new AppError('Cannot delete a sold player', 400);
   }
 
-  await player.deleteOne();
+  player.isActive = false;
+  await player.save();
 
   res.json({
     success: true,
-    message: 'Player deleted successfully'
+    message: 'Player deactivated successfully'
   });
 });
 
@@ -250,11 +255,12 @@ export const resetPlayerStatus = asyncHandler(async (req, res) => {
 // @route   GET /api/players/stats/summary
 // @access  Private
 export const getPlayerStatsSummary = asyncHandler(async (req, res) => {
-  const totalPlayers = await Player.countDocuments();
-  const soldPlayers = await Player.countDocuments({ isSold: true });
-  const unsoldPlayers = await Player.countDocuments({ isSold: false });
+  const totalPlayers = await Player.countDocuments({ isActive: true });
+  const soldPlayers = await Player.countDocuments({ isActive: true, isSold: true });
+  const unsoldPlayers = await Player.countDocuments({ isActive: true, isSold: false });
   
   const roleStats = await Player.aggregate([
+    { $match: { isActive: true } },
     {
       $group: {
         _id: '$role',
@@ -265,7 +271,7 @@ export const getPlayerStatsSummary = asyncHandler(async (req, res) => {
   ]);
 
   const totalMoneySpent = await Player.aggregate([
-    { $match: { isSold: true } },
+    { $match: { isActive: true, isSold: true } },
     { $group: { _id: null, total: { $sum: '$soldPrice' } } }
   ]);
 

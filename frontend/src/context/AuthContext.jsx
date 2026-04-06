@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { authService } from '../services/authService.js';
@@ -77,9 +78,12 @@ export const AuthProvider = ({ children }) => {
 
   // Update user data
   const updateUser = useCallback((updatedData) => {
-    setUser(prev => ({ ...prev, ...updatedData }));
-    localStorage.setItem('user', JSON.stringify({ ...user, ...updatedData }));
-  }, [user]);
+    setUser(prev => {
+      const next = { ...prev, ...updatedData };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   // Refresh user data from server
   const refreshUser = useCallback(async () => {
@@ -91,6 +95,36 @@ export const AuthProvider = ({ children }) => {
       console.error('Failed to refresh user:', error);
     }
   }, []);
+
+  // Keep user role/profile in sync with server while logged in.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    refreshUser();
+
+    const intervalId = setInterval(() => {
+      refreshUser();
+    }, 15000);
+
+    const handleWindowFocus = () => {
+      refreshUser();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        refreshUser();
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, refreshUser]);
 
   // Check if user has role
   const hasRole = useCallback((roles) => {

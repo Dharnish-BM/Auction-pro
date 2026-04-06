@@ -63,7 +63,7 @@ export const getMatch = asyncHandler(async (req, res) => {
 // @route   POST /api/matches
 // @access  Private/Admin
 export const createMatch = asyncHandler(async (req, res) => {
-  const { teamA, teamB, date, time, location, oversPerInnings } = req.body;
+  const { teamA, teamB, date, time, location, venue, oversPerInnings, overs, format, playerPool } = req.body;
 
   // Validate teams exist
   const [teamADoc, teamBDoc] = await Promise.all([
@@ -87,7 +87,11 @@ export const createMatch = asyncHandler(async (req, res) => {
     date: new Date(date),
     time,
     location,
+    ...(venue ? { venue } : {}),
     oversPerInnings: oversPerInnings || 10,
+    ...(typeof overs === 'number' ? { overs } : {}),
+    ...(format ? { format } : {}),
+    ...(Array.isArray(playerPool) ? { playerPool } : {}),
     status: 'upcoming'
   });
 
@@ -198,6 +202,7 @@ export const startMatch = asyncHandler(async (req, res) => {
                          (!teamAWonToss && tossDecision === 'bowl');
   
   match.scorecard.currentInnings = teamABatsFirst ? 'teamA' : 'teamB';
+  match.battingFirst = teamABatsFirst ? match.teamA : match.teamB;
 
   await match.save();
 

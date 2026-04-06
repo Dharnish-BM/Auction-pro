@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import {
     AlertCircle,
@@ -17,7 +18,7 @@ import { useAuction } from '../hooks/useAuction.js';
 import { playerService } from '../services/playerService.js';
 
 export const AuctionRoom = () => {
-  const { user, isAdmin, isCaptain } = useAuth();
+  const { isAdmin, isCaptain } = useAuth();
   const { 
     currentAuction, 
     timeRemaining, 

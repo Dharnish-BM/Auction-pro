@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 
 export const Loader = ({ size = 'medium', fullScreen = false }) => {
@@ -48,12 +49,15 @@ export const SkeletonCard = () => (
 
 export const SkeletonText = ({ lines = 3 }) => (
   <div className="space-y-2 animate-pulse">
-    {Array.from({ length: lines }).map((_, i) => (
-      <div
-        key={i}
-        className="h-4 bg-sports-border rounded"
-        style={{ width: `${Math.random() * 40 + 60}%` }}
-      />
-    ))}
+    {Array.from({ length: lines }).map((_, i) => {
+      const width = 60 + (i * 10) % 40;
+      return (
+        <div
+          key={i}
+          className="h-4 bg-sports-border rounded"
+          style={{ width: `${width}%` }}
+        />
+      );
+    })}
   </div>
 );

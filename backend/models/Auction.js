@@ -22,6 +22,35 @@ const bidHistorySchema = new mongoose.Schema({
 }, { _id: true });
 
 const auctionSchema = new mongoose.Schema({
+  matchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Match',
+    required: [true, 'Please specify the match for this auction']
+  },
+  playerPool: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player'
+  }],
+  queue: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player'
+  }],
+  unsoldPool: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player'
+  }],
+  currentPlayer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player',
+    default: null
+  },
+  config: {
+    teams: { type: Number, default: 0 },
+    budgetPerTeam: { type: Number, default: 0 },
+    basePrice: { type: Number, default: 0 },
+    bidIncrement: { type: Number, default: 1000 },
+    timerSeconds: { type: Number, default: 15 }
+  },
   playerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Player',
@@ -51,7 +80,8 @@ const auctionSchema = new mongoose.Schema({
   bidHistory: [bidHistorySchema],
   status: {
     type: String,
-    enum: ['pending', 'active', 'completed', 'unsold'],
+    // Keep legacy values to avoid breaking existing history reads.
+    enum: ['pending', 'active', 'paused', 'round2', 'closed', 'completed', 'unsold'],
     default: 'pending'
   },
   startTime: {

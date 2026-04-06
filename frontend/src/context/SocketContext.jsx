@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useRef } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext.jsx';
 
@@ -15,33 +16,38 @@ export const useSocket = () => {
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 
 export const SocketProvider = ({ children }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const socketRef = useRef(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   // Initialize socket connection
   useEffect(() => {
     if (isAuthenticated) {
-      socketRef.current = io(SOCKET_URL, {
+      const newSocket = io(SOCKET_URL, {
         transports: ['websocket'],
-        autoConnect: true,
+        autoConnect: true
       });
 
-      socketRef.current.on('connect', () => {
-        console.log('Socket connected:', socketRef.current.id);
+      socketRef.current = newSocket;
+
+      newSocket.on('connect', () => {
+        console.log('Socket connected:', newSocket.id);
+        setIsConnected(true);
       });
 
-      socketRef.current.on('disconnect', () => {
+      newSocket.on('disconnect', () => {
         console.log('Socket disconnected');
+        setIsConnected(false);
       });
 
-      socketRef.current.on('connect_error', (error) => {
+      newSocket.on('connect_error', (error) => {
         console.error('Socket connection error:', error);
       });
 
       return () => {
-        if (socketRef.current) {
-          socketRef.current.disconnect();
-        }
+        setIsConnected(false);
+        newSocket.disconnect();
+        socketRef.current = null;
       };
     }
   }, [isAuthenticated]);
@@ -105,21 +111,20 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
-  const value = {
-    socket: socketRef.current,
-    joinAuction,
-    leaveAuction,
-    placeBidSocket,
-    joinMatch,
-    leaveMatch,
-    on,
-    off,
-    emit,
-    isConnected: socketRef.current?.connected || false
-  };
-
   return (
-    <SocketContext.Provider value={value}>
+    <SocketContext.Provider
+      value={{
+        joinAuction,
+        leaveAuction,
+        placeBidSocket,
+        joinMatch,
+        leaveMatch,
+        on,
+        off,
+        emit,
+        isConnected
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );

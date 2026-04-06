@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import {
     AlertTriangle,
@@ -47,7 +48,7 @@ export const Users = () => {
       setLoading(true);
       const response = await userService.getAll();
       setUsers(response.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to fetch users');
     } finally {
       setLoading(false);
@@ -58,7 +59,7 @@ export const Users = () => {
     e.preventDefault();
     try {
       if (editingUser) {
-        const { password, ...updateData } = formData;
+        const { password: _password, ...updateData } = formData;
         await userService.update(editingUser._id, updateData);
         toast.success('User updated successfully');
       } else {

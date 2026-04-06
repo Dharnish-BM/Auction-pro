@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { Calendar, ChevronRight, Clock, MapPin, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';

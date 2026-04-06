@@ -1,5 +1,75 @@
 import mongoose from 'mongoose';
 
+const deliverySchema = new mongoose.Schema({
+  deliveryNumber: { type: Number, required: true }, // legal deliveries only (1-6)
+  rawDeliveryNumber: { type: Number, required: true }, // includes wides/no-balls
+  batsmanId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', required: true },
+  batsmanName: { type: String, required: true },
+  bowlerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', required: true },
+  bowlerName: { type: String, required: true },
+  runs: { type: Number, default: 0 }, // off bat
+  extraType: {
+    type: String,
+    enum: ['none', 'wide', 'noBall', 'legBye', 'bye', 'penalty'],
+    default: 'none'
+  },
+  extraRuns: { type: Number, default: 0 },
+  totalRuns: { type: Number, default: 0 }, // runs + extraRuns
+  isWicket: { type: Boolean, default: false },
+  wicketType: {
+    type: String,
+    enum: ['bowled', 'caught', 'runOut', 'stumped', 'lbw', 'hitWicket', 'retiredHurt', 'retiredOut', 'obstructingField'],
+    default: null
+  },
+  dismissedBatsmanId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
+  dismissedBatsmanName: { type: String, default: '' },
+  fielderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', default: null },
+  fielderName: { type: String, default: '' },
+  isBoundary: { type: Boolean, default: false },
+  isSix: { type: Boolean, default: false },
+  isFreehit: { type: Boolean, default: false },
+  isLegalDelivery: { type: Boolean, default: true },
+  timestamp: { type: Date, default: Date.now }
+}, { _id: false });
+
+const overSchema = new mongoose.Schema({
+  overNumber: { type: Number, required: true }, // 1-indexed
+  bowlerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', required: true },
+  bowlerName: { type: String, required: true },
+  runsConceded: { type: Number, default: 0 },
+  wickets: { type: Number, default: 0 },
+  isCompleted: { type: Boolean, default: false },
+  deliveries: [deliverySchema]
+}, { _id: false });
+
+const inningsFallOfWicketSchema = new mongoose.Schema({
+  wicketNumber: { type: Number, required: true },
+  runs: { type: Number, required: true },
+  balls: { type: Number, required: true },
+  batsmanId: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', required: true },
+  batsmanName: { type: String, required: true }
+}, { _id: false });
+
+const inningsSchema = new mongoose.Schema({
+  inningsNumber: { type: Number, enum: [1, 2], required: true },
+  battingTeam: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
+  bowlingTeam: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
+  totalRuns: { type: Number, default: 0 },
+  totalWickets: { type: Number, default: 0 },
+  totalBalls: { type: Number, default: 0 }, // legal deliveries only
+  extras: {
+    wides: { type: Number, default: 0 },
+    noBalls: { type: Number, default: 0 },
+    legByes: { type: Number, default: 0 },
+    byes: { type: Number, default: 0 },
+    penalties: { type: Number, default: 0 }
+  },
+  target: { type: Number, default: null }, // only set for 2nd innings
+  isCompleted: { type: Boolean, default: false },
+  fallOfWickets: [inningsFallOfWicketSchema],
+  overs: [overSchema]
+}, { _id: false });
+
 const batsmanSchema = new mongoose.Schema({
   player: {
     type: mongoose.Schema.Types.ObjectId,
@@ -173,12 +243,35 @@ const matchSchema = new mongoose.Schema({
     required: [true, 'Please specify match location'],
     trim: true
   },
+  venue: {
+    type: String,
+    default: ''
+  },
+  overs: {
+    type: Number,
+    required: true,
+    default: 10
+  },
+  format: {
+    type: String,
+    default: 'Custom'
+  },
+  playerPool: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player'
+  }],
   status: {
     type: String,
-    enum: ['upcoming', 'live', 'completed', 'abandoned'],
+    // Keep legacy values to avoid breaking existing workflows.
+    enum: ['setup', 'auction', 'auction_done', 'live', 'innings_break', 'completed', 'upcoming', 'abandoned'],
     default: 'upcoming'
   },
   tossWinner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Team',
+    default: null
+  },
+  battingFirst: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Team',
     default: null
@@ -187,6 +280,15 @@ const matchSchema = new mongoose.Schema({
     type: String,
     enum: ['bat', 'bowl', ''],
     default: ''
+  },
+  result: {
+    winner: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+    margin: { type: Number, default: 0 },
+    marginType: { type: String, enum: ['runs', 'wickets', 'tie', 'no result', ''], default: '' }
+  },
+  innings: {
+    type: [inningsSchema],
+    default: []
   },
   scorecard: {
     type: scorecardSchema,

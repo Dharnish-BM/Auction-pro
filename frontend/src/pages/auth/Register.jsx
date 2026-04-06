@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Loader2, Lock, Mail, Trophy, User } from 'lucide-react';
 import { useState } from 'react';
@@ -39,7 +40,7 @@ export const Register = () => {
       return;
     }
 
-    const { confirmPassword, ...registerData } = formData;
+    const { confirmPassword: _confirmPassword, ...registerData } = formData;
     const result = await register(registerData);
     
     if (result.success) {

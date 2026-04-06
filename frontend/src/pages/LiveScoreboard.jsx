@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { Activity, ArrowLeft, Target } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -43,9 +44,7 @@ export const LiveScoreboard = () => {
 
   const isTeamABatting = match.data.scorecard.currentInnings === 'teamA';
   const battingTeam = isTeamABatting ? match.data.teamA : match.data.teamB;
-  const bowlingTeam = isTeamABatting ? match.data.teamB : match.data.teamA;
   const battingScore = isTeamABatting ? match.data.scorecard.teamAScore : match.data.scorecard.teamBScore;
-  const bowlingScore = isTeamABatting ? match.data.scorecard.teamBScore : match.data.scorecard.teamAScore;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

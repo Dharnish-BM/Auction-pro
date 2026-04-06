@@ -7,9 +7,16 @@ const playerSchema = new mongoose.Schema({
     trim: true,
     maxlength: [50, 'Player name cannot be more than 50 characters']
   },
+  nickname: {
+    type: String,
+    required: [true, 'Please provide player nickname'],
+    trim: true,
+    maxlength: [30, 'Nickname cannot be more than 30 characters']
+  },
   role: {
     type: String,
-    enum: ['Batsman', 'Bowler', 'All-Rounder', 'Wicket-Keeper'],
+    // Keep legacy values to avoid breaking existing data.
+    enum: ['Batsman', 'Bowler', 'All-Rounder', 'All-rounder', 'Wicket-Keeper', 'Wicket-keeper'],
     required: [true, 'Please specify player role']
   },
   basePrice: {
@@ -33,7 +40,8 @@ const playerSchema = new mongoose.Schema({
   },
   battingStyle: {
     type: String,
-    enum: ['Right-handed', 'Left-handed', ''],
+    // Keep legacy values to avoid breaking existing data.
+    enum: ['Right-hand bat', 'Left-hand bat', 'Right-handed', 'Left-handed', ''],
     default: ''
   },
   bowlingStyle: {
@@ -41,6 +49,55 @@ const playerSchema = new mongoose.Schema({
     enum: ['Right-arm Fast', 'Right-arm Medium', 'Right-arm Off-spin', 'Right-arm Leg-spin', 'Left-arm Fast', 'Left-arm Medium', 'Left-arm Spin', ''],
     default: ''
   },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  auctionHistory: [
+    new mongoose.Schema(
+      {
+        matchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Match', required: true },
+        teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+        soldFor: { type: Number, default: 0, min: [0, 'Sold amount cannot be negative'] },
+        unsold: { type: Boolean, default: false }
+      },
+      { _id: false }
+    )
+  ],
+  careerStats: {
+    matchesPlayed: { type: Number, default: 0 },
+    totalRuns: { type: Number, default: 0 },
+    totalBallsFaced: { type: Number, default: 0 },
+    highScore: { type: Number, default: 0 },
+    fifties: { type: Number, default: 0 },
+    hundreds: { type: Number, default: 0 },
+    fours: { type: Number, default: 0 },
+    sixes: { type: Number, default: 0 },
+    totalWickets: { type: Number, default: 0 },
+    totalBallsBowled: { type: Number, default: 0 },
+    totalRunsConceded: { type: Number, default: 0 },
+    catches: { type: Number, default: 0 },
+    runOuts: { type: Number, default: 0 },
+    stumpings: { type: Number, default: 0 },
+    bestBowlingWickets: { type: Number, default: 0 },
+    bestBowlingRuns: { type: Number, default: 999 }
+  },
+  matchHistory: [
+    new mongoose.Schema(
+      {
+        matchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Match', required: true },
+        runs: { type: Number, default: 0 },
+        ballsFaced: { type: Number, default: 0 },
+        wickets: { type: Number, default: 0 },
+        runsConceded: { type: Number, default: 0 },
+        ballsBowled: { type: Number, default: 0 },
+        catches: { type: Number, default: 0 },
+        notOut: { type: Boolean, default: false },
+        date: { type: Date, default: Date.now }
+      },
+      { _id: false }
+    )
+  ],
   stats: {
     matches: { type: Number, default: 0 },
     runs: { type: Number, default: 0 },

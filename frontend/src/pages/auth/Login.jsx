@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Loader2, Lock, Mail, Trophy } from 'lucide-react';
 import { useState } from 'react';
