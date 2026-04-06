@@ -4,7 +4,6 @@ import 'react-toastify/dist/ReactToastify.css';
 
 // Context Providers
 import { AuthProvider } from './context/AuthContext.jsx';
-import { SocketProvider } from './context/SocketContext.jsx';
 
 // Layout
 import { Navbar } from './components/layout/Navbar.jsx';
@@ -16,7 +15,6 @@ import { Players as AdminPlayers } from './pages/admin/Players.jsx';
 import { Teams as AdminTeams } from './pages/admin/Teams.jsx';
 import { Users as AdminUsers } from './pages/admin/Users.jsx';
 import { Login } from './pages/auth/Login.jsx';
-import { Register } from './pages/auth/Register.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { Landing } from './pages/Landing.jsx';
 import { LiveScoreboard } from './pages/LiveScoreboard.jsx';
@@ -30,16 +28,14 @@ import { Teams } from './pages/Teams.jsx';
 function App() {
   return (
     <AuthProvider>
-      <SocketProvider>
-        <Router>
-          <div className="min-h-screen bg-sports-dark">
-            <Navbar />
-            <main>
-              <Routes>
+      <Router>
+        <div className="min-h-screen bg-sports-dark">
+          <Navbar />
+          <main>
+            <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
 
                 {/* Protected Routes */}
                 <Route
@@ -99,7 +95,14 @@ function App() {
                   }
                 />
                 {/* Public live route */}
-                <Route path="/matches/:id/live" element={<LiveScoreboard />} />
+                <Route
+                  path="/matches/:id/live"
+                  element={
+                    <ProtectedRoute routeType="publicMatch">
+                      <LiveScoreboard />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Admin Only Routes */}
                 <Route
@@ -137,11 +140,11 @@ function App() {
 
                 {/* Catch all */}
                 <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </main>
-          </div>
-        </Router>
-        <ToastContainer
+            </Routes>
+          </main>
+        </div>
+      </Router>
+      <ToastContainer
           position="top-right"
           autoClose={3000}
           hideProgressBar={false}
@@ -156,8 +159,7 @@ function App() {
             backgroundColor: '#12121a',
             border: '1px solid #1e1e2e',
           }}
-        />
-      </SocketProvider>
+      />
     </AuthProvider>
   );
 }

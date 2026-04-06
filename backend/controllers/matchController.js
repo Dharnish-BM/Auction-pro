@@ -1401,10 +1401,13 @@ async function endMatchInternal(matchId, chasingTeamIdOrNull) {
   await match.save();
   emitToMatch(match._id.toString(), 'match_completed', { result: match.result });
 
-  try {
-    await aggregateCareerStats(match._id);
-  } catch (error) {
-    console.error('Career stats aggregation failed:', error);
+  const aggEnabled = String(process.env.STATS_AGGREGATION_ENABLED || 'true').toLowerCase() !== 'false';
+  if (aggEnabled) {
+    try {
+      await aggregateCareerStats(match._id);
+    } catch (error) {
+      console.error('Career stats aggregation failed:', error);
+    }
   }
 }
 

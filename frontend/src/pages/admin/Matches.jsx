@@ -13,7 +13,7 @@ import {
     Trophy,
     XCircle
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Loader } from '../../components/common/Loader.jsx';
 import { matchService } from '../../services/matchService.js';
@@ -43,12 +43,7 @@ export const Matches = () => {
     tossDecision: 'bat'
   });
 
-  useEffect(() => {
-    fetchMatches();
-    fetchTeams();
-  }, []);
-
-  const fetchMatches = async () => {
+  const fetchMatches = useCallback(async () => {
     try {
       setLoading(true);
       const params = statusFilter ? { status: statusFilter } : {};
@@ -59,16 +54,21 @@ export const Matches = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
 
-  const fetchTeams = async () => {
+  const fetchTeams = useCallback(async () => {
     try {
       const response = await teamService.getAll();
       setTeams(response.data);
     } catch (_error) {
       console.error('Failed to fetch teams:', _error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchMatches();
+    fetchTeams();
+  }, [fetchMatches, fetchTeams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -51,23 +51,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Register
-  const register = useCallback(async (userData) => {
-    try {
-      setLoading(true);
-      const response = await authService.register(userData);
-      setUser(response.data);
-      setIsAuthenticated(true);
-      toast.success('Registration successful!');
-      return { success: true };
-    } catch (error) {
-      toast.error(error.message || 'Registration failed');
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   // Logout
   const logout = useCallback(() => {
     authService.logout();
@@ -129,20 +112,23 @@ export const AuthProvider = ({ children }) => {
   // Check if user has role
   const hasRole = useCallback((roles) => {
     if (!user) return false;
+    const currentRole = String(user.appRole || user.role || '').trim().toLowerCase();
     if (Array.isArray(roles)) {
-      return roles.includes(user.role);
+      return roles.map(r => String(r).toLowerCase()).includes(currentRole);
     }
-    return user.role === roles;
+    return currentRole === String(roles).toLowerCase();
   }, [user]);
 
   // Check if user is admin
   const isAdmin = useCallback(() => {
-    return user?.role === 'admin';
+    const currentRole = String(user?.appRole || user?.role || '').trim().toLowerCase();
+    return currentRole === 'admin';
   }, [user]);
 
   // Check if user is captain
   const isCaptain = useCallback(() => {
-    return user?.role === 'captain';
+    const currentRole = String(user?.appRole || user?.role || '').trim().toLowerCase();
+    return currentRole === 'captain';
   }, [user]);
 
   const value = {
@@ -150,7 +136,6 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated,
     login,
-    register,
     logout,
     updateUser,
     refreshUser,

@@ -2,7 +2,7 @@
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Loader2, Lock, Mail, Trophy } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 export const Login = () => {
@@ -127,18 +127,6 @@ export const Login = () => {
               )}
             </button>
           </form>
-
-
-
-          {/* Footer */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-400">
-              Don't have an account?{' '}
-              <Link to="/register" className="text-neon-green hover:underline">
-                Sign up
-              </Link>
-            </p>
-          </div>
         </div>
       </motion.div>
     </div>

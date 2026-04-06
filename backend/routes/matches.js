@@ -27,13 +27,13 @@ import {
     updateScore
 } from '../controllers/matchController.js';
 import { createAuction } from '../controllers/auctionController.js';
-import { isAdmin, protect } from '../middleware/auth.js';
+import { isAdmin, optionalAuth, protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Public routes (no auth)
-router.get('/:id/live', getLiveState);
-router.get('/:id/scorecard', getScorecard);
+router.get('/:id/live', optionalAuth, getLiveState);
+router.get('/:id/scorecard', optionalAuth, getScorecard);
 
 // Protected routes
 router.get('/', protect, getMatches);

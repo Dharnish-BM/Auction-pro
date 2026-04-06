@@ -36,21 +36,49 @@ export const protect = async (req, res, next) => {
   }
 };
 
+// Optional auth - attaches req.user if token is present and valid, but never blocks.
+export const optionalAuth = async (req, _res, next) => {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return next();
+  }
+  const token = auth.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+    if (user && user.isActive) {
+      req.user = user;
+    }
+  } catch {
+    // ignore
+  }
+  return next();
+};
+
 // Role-based access control
 export const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    const userRole = String(req.user.appRole || req.user.role || '').trim().toLowerCase();
+    const allowed = roles.map(r => String(r).toLowerCase());
+    if (!allowed.includes(userRole)) {
       return res.status(403).json({
-        message: `Role ${req.user.role} is not authorized to access this resource`
+        message: `Role ${userRole} is not authorized to access this resource`
       });
     }
     next();
   };
 };
 
+// Alias with normalization for routes.
+export const allowRoles = (...roles) => {
+  const normalized = roles.map(r => String(r).toLowerCase());
+  return authorize(...normalized);
+};
+
 // Check if user is admin
 export const isAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
+  const userRole = String(req.user.appRole || req.user.role || '').trim().toLowerCase();
+  if (userRole !== 'admin') {
     return res.status(403).json({ message: 'Access denied. Admin only.' });
   }
   next();
@@ -58,7 +86,8 @@ export const isAdmin = (req, res, next) => {
 
 // Check if user is captain
 export const isCaptain = (req, res, next) => {
-  if (req.user.role !== 'captain' && req.user.role !== 'admin') {
+  const userRole = String(req.user.appRole || req.user.role || '').trim().toLowerCase();
+  if (userRole !== 'captain' && userRole !== 'admin') {
     return res.status(403).json({ message: 'Access denied. Captains only.' });
   }
   next();
@@ -69,11 +98,12 @@ export const isTeamCaptain = async (req, res, next) => {
   try {
     const { teamId } = req.params;
     
-    if (req.user.role === 'admin') {
+    const userRole = String(req.user.appRole || req.user.role || '').trim().toLowerCase();
+    if (userRole === 'admin') {
       return next();
     }
 
-    if (req.user.role !== 'captain' || req.user.teamId?.toString() !== teamId) {
+    if (userRole !== 'captain' || req.user.teamId?.toString() !== teamId) {
       return res.status(403).json({ message: 'Access denied. Team captain only.' });
     }
     

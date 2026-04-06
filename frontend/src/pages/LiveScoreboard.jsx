@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
 import { ArrowLeft } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { Loader } from '../components/common/Loader.jsx';
 import { matchService } from '../services/matchService.js';
+import socket from '../utils/socket.js';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 const oversFromBalls = (balls = 0) => `${Math.floor((balls || 0) / 6)}.${(balls || 0) % 6}`;
 
 const chipClass = (s) => {
@@ -61,13 +60,14 @@ export const LiveScoreboard = () => {
         if (mounted) setLoading(false);
       }
 
-      const s = io(SOCKET_URL, { transports: ['websocket'], autoConnect: true });
+      const s = socket;
       socketRef.current = s;
+      s.connect();
 
       s.on('connect', () => {
         setSocketOk(true);
         stopPolling();
-        s.emit('join-match', id);
+        s.emit('join_match', id);
       });
       s.on('disconnect', () => {
         setSocketOk(false);
@@ -91,7 +91,7 @@ export const LiveScoreboard = () => {
       stopPolling();
       const s = socketRef.current;
       if (s) {
-        try { s.emit('leave-match', id); } catch { /**/ }
+        try { s.emit('leave_match', id); } catch { /**/ }
         s.disconnect();
       }
     };

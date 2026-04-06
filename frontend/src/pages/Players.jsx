@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Users, X } from 'lucide-react';
+import { Search, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Loader } from '../components/common/Loader.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
 import { playerService } from '../services/playerService.js';
 
 const SORTS = [
@@ -14,13 +13,10 @@ const SORTS = [
 ];
 
 export const Players = () => {
-  const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [players, setPlayers] = useState([]);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('runs');
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkText, setBulkText] = useState('');
 
   const loadPlayers = async () => {
     setLoading(true);
@@ -54,32 +50,6 @@ export const Players = () => {
     return arr;
   }, [players, search, sortBy]);
 
-  const onBulkSubmit = async () => {
-    const names = bulkText
-      .split('\n')
-      .map((x) => x.trim())
-      .filter(Boolean);
-    if (!names.length) {
-      toast.error('Paste at least one name');
-      return;
-    }
-    try {
-      await playerService.bulkCreate(
-        names.map((name) => ({
-          name,
-          nickname: name,
-          role: 'All-rounder',
-        }))
-      );
-      toast.success(`${names.length} players added`);
-      setBulkOpen(false);
-      setBulkText('');
-      await loadPlayers();
-    } catch (e) {
-      toast.error(e.message || 'Bulk add failed');
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -87,15 +57,6 @@ export const Players = () => {
           <h1 className="text-3xl font-bold text-white mb-1">Players</h1>
           <p className="text-gray-400">Career stats and profiles</p>
         </div>
-        {isAdmin() && (
-          <button
-            onClick={() => setBulkOpen(true)}
-            className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-neon-green text-sports-darker font-semibold"
-          >
-            <Plus className="w-4 h-4" />
-            Bulk Add Players
-          </button>
-        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -122,6 +83,9 @@ export const Players = () => {
               <tr className="border-b border-sports-border text-gray-400">
                 <th className="text-left py-3">Player</th>
                 <th className="text-left">Role</th>
+                <th className="text-left">Batting Style</th>
+                <th className="text-left">Bowling Style</th>
+                <th className="text-center">Base Price</th>
                 <th className="text-center">Runs</th>
                 <th className="text-center">Wickets</th>
                 <th className="text-center">Matches</th>
@@ -137,6 +101,9 @@ export const Players = () => {
                     </Link>
                   </td>
                   <td className="text-gray-300">{p.role || '-'}</td>
+                  <td className="text-gray-300">{p.battingStyle || '-'}</td>
+                  <td className="text-gray-300">{p.bowlingStyle || '-'}</td>
+                  <td className="text-center text-white">₹{Number(p.basePrice || 5000).toLocaleString()}</td>
                   <td className="text-center text-white">{p.careerStats?.totalRuns || 0}</td>
                   <td className="text-center text-white">{p.careerStats?.totalWickets || 0}</td>
                   <td className="text-center text-white">{p.careerStats?.matchesPlayed || 0}</td>
@@ -154,30 +121,6 @@ export const Players = () => {
         </div>
       )}
 
-      {bulkOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="sports-card w-full max-w-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl text-white font-semibold">Bulk Add Players</h2>
-              <button className="text-gray-400 hover:text-white" onClick={() => setBulkOpen(false)}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-sm text-gray-400 mb-2">Paste one player name per line. Default role: All-rounder.</p>
-            <textarea
-              rows={10}
-              value={bulkText}
-              onChange={(e) => setBulkText(e.target.value)}
-              className="w-full"
-              placeholder={`Virat\nRohit\nRahul`}
-            />
-            <div className="flex justify-end gap-2 mt-4">
-              <button className="px-4 py-2 rounded-lg text-gray-300 hover:text-white" onClick={() => setBulkOpen(false)}>Cancel</button>
-              <button className="px-4 py-2 rounded-lg bg-neon-green text-sports-darker font-semibold" onClick={onBulkSubmit}>Add Players</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

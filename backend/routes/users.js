@@ -7,6 +7,8 @@ import {
     getAvailableCaptains,
     getUser,
     getUsers,
+    resetPassword,
+    setAppRole,
     updateUser
 } from '../controllers/userController.js';
 import { isAdmin, protect } from '../middleware/auth.js';
@@ -21,6 +23,8 @@ router.get('/', getUsers);
 router.get('/captains/available', getAvailableCaptains);
 router.get('/:id', getUser);
 router.put('/:id', updateUser);
+router.patch('/:id/role', setAppRole);
+router.patch('/:id/password', resetPassword);
 router.patch('/:id/activate', activateUser);
 router.patch('/:id/deactivate', deactivateUser);
 router.delete('/:id', deleteUser);

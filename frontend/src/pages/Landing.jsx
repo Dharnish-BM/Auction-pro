@@ -108,17 +108,11 @@ export const Landing = () => {
               ) : (
                 <>
                   <Link
-                    to="/register"
+                    to="/login"
                     className="group flex items-center space-x-2 px-8 py-4 bg-neon-green text-sports-darker font-semibold rounded-xl hover:shadow-neon transition-all duration-300"
                   >
-                    <span>Get Started</span>
+                    <span>Go to Login</span>
                     <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </Link>
-                  <Link
-                    to="/login"
-                    className="px-8 py-4 border border-sports-border text-white font-semibold rounded-xl hover:bg-white/5 transition-all duration-300"
-                  >
-                    Sign In
                   </Link>
                 </>
               )}
@@ -202,10 +196,10 @@ export const Landing = () => {
           </p>
           {!isAuthenticated && (
             <Link
-              to="/register"
+              to="/login"
               className="inline-flex items-center space-x-2 px-8 py-4 bg-neon-green text-sports-darker font-semibold rounded-xl hover:shadow-neon transition-all duration-300"
             >
-              <span>Create Free Account</span>
+              <span>Login to Continue</span>
               <ChevronRight className="w-5 h-5" />
             </Link>
           )}

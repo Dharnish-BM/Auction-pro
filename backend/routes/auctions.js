@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+    getAuctionHistory,
     getAuctionState,
     overrideBid,
     pauseAuction,
@@ -8,15 +9,16 @@ import {
     skipCurrentPlayer,
     startAuction
 } from '../controllers/auctionController.js';
-import { isAdmin, isCaptain, protect } from '../middleware/auth.js';
+import { allowRoles, isAdmin, protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Protected routes
 router.get('/:id/state', protect, getAuctionState);
+router.get('/:id/history', protect, getAuctionHistory);
 
-// Captain only - place bid
-router.post('/:id/bid', protect, isCaptain, placeBid);
+// Admin + Captain - place bid
+router.post('/:id/bid', protect, allowRoles('admin', 'captain'), placeBid);
 
 // Admin only routes
 router.post('/:id/start', protect, isAdmin, startAuction);

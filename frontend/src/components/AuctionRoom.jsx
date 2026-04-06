@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
 import { ChevronDown, ChevronUp, Pause, Play, SkipForward, UserCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext.jsx';
 import { auctionService } from '../services/auctionService.js';
 import { Loader } from './common/Loader.jsx';
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
+import socket from '../utils/socket.js';
 
 const formatMoney = (n) => `₹${Number(n || 0).toLocaleString()}`;
 
@@ -78,6 +76,8 @@ export const AuctionRoom = ({ auctionId }) => {
   const [bidAmount, setBidAmount] = useState('');
   const [overrideTeamId, setOverrideTeamId] = useState('');
   const [overrideAmount, setOverrideAmount] = useState('');
+  const [adminBidTeamId, setAdminBidTeamId] = useState('');
+  const [adminBidAmount, setAdminBidAmount] = useState('');
 
   const config = state?.config;
   const currentPlayer = state?.currentPlayer;
@@ -150,14 +150,14 @@ export const AuctionRoom = ({ auctionId }) => {
         if (mounted) setLoading(false);
       }
 
-      // connect socket
-      const socket = io(SOCKET_URL, { transports: ['websocket'], autoConnect: true });
+      // connect socket (singleton)
       socketRef.current = socket;
+      socket.connect();
 
       socket.on('connect', () => {
         setSocketOk(true);
         stopPolling();
-        socket.emit('join-auction', { auctionId });
+        socket.emit('join_auction', auctionId);
       });
 
       socket.on('disconnect', () => {
@@ -256,7 +256,7 @@ export const AuctionRoom = ({ auctionId }) => {
       const s = socketRef.current;
       if (s) {
         try {
-          s.emit('leave-auction', { auctionId });
+          s.emit('leave_auction', auctionId);
         } catch {
           // ignore
         }
@@ -280,6 +280,19 @@ export const AuctionRoom = ({ auctionId }) => {
       setState(res.data);
     } catch (e) {
       toast.error(e.message || 'Bid failed');
+    }
+  };
+
+  const handleAdminPlaceBid = async () => {
+    const amt = Number(adminBidAmount);
+    if (!adminBidTeamId || !Number.isFinite(amt) || amt <= 0) return;
+    try {
+      const res = await auctionService.placeBid(auctionId, amt, adminBidTeamId);
+      setState(res.data);
+      setAdminBidTeamId('');
+      setAdminBidAmount('');
+    } catch (e) {
+      toast.error(e.message || 'Admin bid failed');
     }
   };
 
@@ -473,6 +486,21 @@ export const AuctionRoom = ({ auctionId }) => {
             )}
           </div>
 
+          <div className="mt-4 p-4 rounded-xl bg-sports-border/20 border border-sports-border">
+            <p className="text-white font-semibold mb-2">Bid History</p>
+            <div className="space-y-2 max-h-40 overflow-y-auto text-sm">
+              {(state.bids || []).slice().reverse().map((b, idx) => (
+                <div key={`${b.timestamp || idx}`} className="flex items-center justify-between text-gray-200">
+                  <span>{teams.find(t => String(t._id) === String(b.teamId))?.name || 'Team'}</span>
+                  <span className="text-gold font-semibold">{formatMoney(b.amount)}</span>
+                </div>
+              ))}
+              {(state.bids || []).length === 0 && (
+                <p className="text-gray-500">No bids yet.</p>
+              )}
+            </div>
+          </div>
+
           {/* Bid controls */}
           {isCaptain() && (
             <div className="mt-6">
@@ -519,6 +547,34 @@ export const AuctionRoom = ({ auctionId }) => {
           {/* Admin controls */}
           {isAdmin() && (
             <div className="mt-8 pt-6 border-t border-sports-border space-y-3">
+              <div className="p-3 rounded-xl bg-sports-border/20 border border-sports-border">
+                <p className="text-white font-semibold mb-2">Admin Bid (any team)</p>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <select value={adminBidTeamId} onChange={(e) => setAdminBidTeamId(e.target.value)} className="w-full">
+                    <option value="">Select team…</option>
+                    {teams.map(t => (
+                      <option key={t._id} value={t._id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={adminBidAmount}
+                    onChange={(e) => setAdminBidAmount(e.target.value)}
+                    placeholder="Amount"
+                    className="w-full"
+                    min={effectiveBasePrice}
+                    step={bidIncrement}
+                  />
+                  <button
+                    onClick={handleAdminPlaceBid}
+                    disabled={!adminBidTeamId || !adminBidAmount || remainingSeconds <= 0 || state?.status !== 'active'}
+                    className="px-4 py-2 rounded-lg bg-neon-green text-sports-darker font-semibold disabled:opacity-50"
+                  >
+                    Place Bid
+                  </button>
+                </div>
+              </div>
+
               <div className="flex flex-wrap gap-3">
                 <button onClick={handleSkip} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 text-gray-200 hover:bg-white/10">
                   <SkipForward className="w-4 h-4" />

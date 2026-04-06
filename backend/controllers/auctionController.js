@@ -202,10 +202,10 @@ export const startAuction = asyncHandler(async (req, res) => {
 
 // @desc    Place bid
 // @route   POST /api/auctions/:id/bid
-// @access  Private/Captain
+// @access  Private/Admin+Captain
 export const placeBid = asyncHandler(async (req, res) => {
   const auctionId = req.params.id;
-  const { amount } = req.body;
+  const { amount, teamId } = req.body;
   const bidAmount = Number(amount);
   if (!Number.isFinite(bidAmount) || bidAmount <= 0) {
     throw new AppError('amount must be a positive number', 400);
@@ -219,8 +219,21 @@ export const placeBid = asyncHandler(async (req, res) => {
   const match = await Match.findById(auction.matchId);
   if (!match) throw new AppError('Match not found for this auction', 404);
 
-  const team = await getTeamForCaptainInMatch(match, req.user._id);
-  if (!team) throw new AppError('You are not assigned to a team in this match', 400);
+  const userRole = String(req.user.appRole || req.user.role || '').toLowerCase();
+
+  let team = null;
+  if (userRole === 'admin') {
+    if (!teamId) throw new AppError('teamId is required for admin bids', 400);
+    if (![String(match.teamA), String(match.teamB)].includes(String(teamId))) {
+      throw new AppError('teamId must be a team in this match', 400);
+    }
+    team = await Team.findById(teamId).populate('captain', 'name email appRole role');
+    if (!team) throw new AppError('Team not found', 404);
+  } else {
+    // Captain can only bid for their own team in this match
+    team = await getTeamForCaptainInMatch(match, req.user._id);
+    if (!team) throw new AppError('You are not assigned to a team in this match', 400);
+  }
 
   const min = auction.highestBid > 0
     ? auction.highestBid + (auction.config.bidIncrement || 0)
@@ -234,7 +247,8 @@ export const placeBid = asyncHandler(async (req, res) => {
     throw new AppError('Insufficient budget', 400);
   }
 
-  if (auction.highestBidder && String(auction.highestBidder) === String(team._id)) {
+  // Captains cannot outbid themselves; Admin can override and can increase same team's bid.
+  if (userRole !== 'admin' && auction.highestBidder && String(auction.highestBidder) === String(team._id)) {
     throw new AppError('You are already the highest bidder', 400);
   }
 
@@ -554,5 +568,24 @@ export const getAuctionState = asyncHandler(async (req, res) => {
   const state = await getAuctionStateInternal(req.params.id);
   if (!state) throw new AppError('Auction not found', 404);
   res.json({ success: true, data: state });
+});
+
+// @desc    Get auction bid history
+// @route   GET /api/auctions/:id/history
+// @access  Private
+export const getAuctionHistory = asyncHandler(async (req, res) => {
+  const auction = await Auction.findById(req.params.id).select('bidHistory bids highestBid highestBidder highestBidderName status');
+  if (!auction) throw new AppError('Auction not found', 404);
+  res.json({
+    success: true,
+    data: {
+      status: auction.status,
+      highestBid: auction.highestBid,
+      highestBidder: auction.highestBidder,
+      highestBidderName: auction.highestBidderName,
+      bids: auction.bids || [],
+      bidHistory: auction.bidHistory || []
+    }
+  });
 });
 

@@ -1,7 +1,20 @@
 import mongoose from 'mongoose';
 import { AppError, asyncHandler } from '../middleware/errorHandler.js';
+import Match from '../models/Match.js';
+import Player from '../models/Player.js';
 import Team from '../models/Team.js';
 import User from '../models/User.js';
+
+const assertCaptainAppRole = (user) => {
+  // A user can captain multiple teams across different matches — this is by design.
+  const role = (user?.appRole || user?.role || '').toLowerCase();
+  if (!['captain', 'admin'].includes(role)) {
+    throw new AppError(
+      "This user does not have the Captain role. Please promote them first in Users settings.",
+      400
+    );
+  }
+};
 
 // @desc    Get all teams
 // @route   GET /api/teams
@@ -53,12 +66,7 @@ export const createTeam = asyncHandler(async (req, res) => {
   if (!captainUser) {
     throw new AppError('Captain not found', 404);
   }
-  if (captainUser.role !== 'captain') {
-    throw new AppError('Selected user is not a captain', 400);
-  }
-  if (captainUser.teamId) {
-    throw new AppError('Captain is already assigned to a team', 400);
-  }
+  assertCaptainAppRole(captainUser);
 
   // Create team
   const team = await Team.create({
@@ -69,10 +77,6 @@ export const createTeam = asyncHandler(async (req, res) => {
     remainingBudget: totalBudget || 100000,
     color
   });
-
-  // Update captain's teamId
-  captainUser.teamId = team._id;
-  await captainUser.save();
 
   const populatedTeam = await Team.findById(team._id)
     .populate('captain', 'name email');
@@ -101,23 +105,7 @@ export const updateTeam = asyncHandler(async (req, res) => {
     if (!newCaptain) {
       throw new AppError('New captain not found', 404);
     }
-    if (newCaptain.role !== 'captain') {
-      throw new AppError('Selected user is not a captain', 400);
-    }
-    if (newCaptain.teamId && newCaptain.teamId.toString() !== team._id.toString()) {
-      throw new AppError('Captain is already assigned to another team', 400);
-    }
-
-    // Remove team from old captain
-    const oldCaptain = await User.findById(team.captain);
-    if (oldCaptain) {
-      oldCaptain.teamId = null;
-      await oldCaptain.save();
-    }
-
-    // Assign team to new captain
-    newCaptain.teamId = team._id;
-    await newCaptain.save();
+    assertCaptainAppRole(newCaptain);
 
     team.captain = captain;
   }
@@ -154,13 +142,6 @@ export const deleteTeam = asyncHandler(async (req, res) => {
   const team = await Team.findById(req.params.id);
   if (!team) {
     throw new AppError('Team not found', 404);
-  }
-
-  // Remove team reference from captain
-  const captain = await User.findById(team.captain);
-  if (captain) {
-    captain.teamId = null;
-    await captain.save();
   }
 
   // Remove team reference from all players
@@ -239,4 +220,76 @@ export const getTeamStats = asyncHandler(async (req, res) => {
       netRunRate: team.netRunRate
     }
   });
+});
+
+// @desc    Admin edits squad (post-auction)
+// @route   PATCH /api/teams/:id/squad
+// @access  Private/Admin
+export const editSquad = asyncHandler(async (req, res) => {
+  const { addPlayerIds = [], removePlayerIds = [] } = req.body;
+  if (!Array.isArray(addPlayerIds) && !Array.isArray(removePlayerIds)) {
+    throw new AppError('addPlayerIds/removePlayerIds must be arrays', 400);
+  }
+
+  const team = await Team.findById(req.params.id);
+  if (!team) throw new AppError('Team not found', 404);
+
+  // Find match that references this team (needed to validate playerPool membership)
+  const match = await Match.findOne({ $or: [{ teamA: team._id }, { teamB: team._id }] }).select('playerPool');
+  if (!match) {
+    throw new AppError('Match not found for this team (cannot validate playerPool)', 404);
+  }
+  const poolSet = new Set((match.playerPool || []).map(String));
+
+  // Remove players silently if not present
+  if (Array.isArray(removePlayerIds) && removePlayerIds.length) {
+    const removeSet = new Set(removePlayerIds.map(String));
+    team.players = (team.players || []).filter((pid) => !removeSet.has(String(pid)));
+  }
+
+  // Add players with validation
+  if (Array.isArray(addPlayerIds) && addPlayerIds.length) {
+    for (const pid of addPlayerIds) {
+      const id = String(pid);
+      const exists = await Player.findById(id).select('_id');
+      if (!exists) {
+        throw new AppError(`Player not found: ${id}`, 400);
+      }
+      if (!poolSet.has(id)) {
+        throw new AppError(`Player not in match pool: ${id}`, 400);
+      }
+      if (!(team.players || []).map(String).includes(id)) {
+        team.players.push(id);
+      }
+    }
+  }
+
+  await team.save();
+  const updatedTeam = await Team.findById(team._id)
+    .populate('captain', 'name email')
+    .populate('players', 'name nickname role soldPrice');
+
+  res.json({
+    success: true,
+    warning: 'Budget not adjusted — update manually if needed',
+    data: updatedTeam
+  });
+});
+
+// @desc    Remove player from team (admin)
+// @route   DELETE /api/teams/:id/players/:playerId
+// @access  Private/Admin
+export const removePlayerFromTeam = asyncHandler(async (req, res) => {
+  const { id, playerId } = req.params;
+  const team = await Team.findById(id);
+  if (!team) throw new AppError('Team not found', 404);
+
+  team.players = (team.players || []).filter((p) => String(p) !== String(playerId));
+  await team.save();
+
+  const updatedTeam = await Team.findById(team._id)
+    .populate('captain', 'name email')
+    .populate('players', 'name nickname role soldPrice');
+
+  res.json({ success: true, data: updatedTeam });
 });

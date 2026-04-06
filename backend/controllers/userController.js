@@ -1,34 +1,68 @@
 import { AppError, asyncHandler } from '../middleware/errorHandler.js';
+import Player from '../models/Player.js';
 import User from '../models/User.js';
 
 // @desc    Create user
 // @route   POST /api/users
 // @access  Private/Admin
 export const createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, nickname, email, password, battingStyle, bowlingStyle, role: playerRole } = req.body;
+
+  if (!name || !nickname || !email || !password || !playerRole) {
+    throw new AppError('name, nickname, email, password and role are required', 400);
+  }
+  if (String(password).length < 6) {
+    throw new AppError('Password must be at least 6 characters', 400);
+  }
 
   const userExists = await User.findOne({ email });
   if (userExists) {
-    throw new AppError('User already exists with this email', 400);
+    throw new AppError('A user with this email already exists', 409);
   }
 
   const user = await User.create({
     name,
     email,
     password,
-    role: role || 'viewer'
+    appRole: 'viewer',
+    role: 'viewer'
   });
+
+  let player;
+  try {
+    player = await Player.create({
+      userId: user._id,
+      name,
+      nickname,
+      battingStyle: battingStyle || '',
+      bowlingStyle: bowlingStyle || '',
+      role: playerRole,
+      basePrice: 5000,
+      isActive: true
+    });
+  } catch (error) {
+    await User.findByIdAndDelete(user._id);
+    throw error;
+  }
+
+  user.playerId = player._id;
+  await user.save();
 
   res.status(201).json({
     success: true,
-    message: 'User created successfully',
+    message: 'User and player created successfully',
     data: {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      isActive: user.isActive,
-      teamId: user.teamId
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        appRole: user.appRole,
+        role: user.appRole,
+        isActive: user.isActive,
+        teamId: user.teamId,
+        playerId: user.playerId
+      },
+      player
     }
   });
 });
@@ -37,7 +71,10 @@ export const createUser = asyncHandler(async (req, res) => {
 // @route   GET /api/users
 // @access  Private/Admin
 export const getUsers = asyncHandler(async (req, res) => {
-  const users = await User.find().populate('teamId', 'name').select('-password');
+  const users = await User.find()
+    .populate('teamId', 'name')
+    .populate('playerId', 'name nickname role battingStyle bowlingStyle')
+    .select('-password');
 
   res.json({
     success: true,
@@ -52,6 +89,7 @@ export const getUsers = asyncHandler(async (req, res) => {
 export const getUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id)
     .populate('teamId', 'name logo')
+    .populate('playerId', 'name nickname role battingStyle bowlingStyle')
     .select('-password');
 
   if (!user) {
@@ -68,11 +106,11 @@ export const getUser = asyncHandler(async (req, res) => {
 // @route   PUT /api/users/:id
 // @access  Private/Admin
 export const updateUser = asyncHandler(async (req, res) => {
-  const { name, email, role, isActive, teamId } = req.body;
+  const { name, email, appRole, isActive, teamId } = req.body;
 
   const user = await User.findByIdAndUpdate(
     req.params.id,
-    { name, email, role, isActive, teamId },
+    { name, email, appRole, role: appRole, isActive, teamId },
     { new: true, runValidators: true }
   ).select('-password');
 
@@ -136,10 +174,14 @@ export const deleteUser = asyncHandler(async (req, res) => {
   }
 
   // Check if user is a captain of a team
-  if (user.role === 'captain' && user.teamId) {
+  const role = user.appRole || user.role;
+  if (role === 'captain' && user.teamId) {
     throw new AppError('Cannot delete user who is assigned as captain to a team. Remove them from team first.', 400);
   }
 
+  if (user.playerId) {
+    await Player.findByIdAndDelete(user.playerId);
+  }
   await user.deleteOne();
 
   res.json({
@@ -153,8 +195,7 @@ export const deleteUser = asyncHandler(async (req, res) => {
 // @access  Private/Admin
 export const getAvailableCaptains = asyncHandler(async (req, res) => {
   const captains = await User.find({
-    role: 'captain',
-    teamId: null,
+    appRole: { $in: ['captain', 'admin'] },
     isActive: true
   }).select('-password');
 
@@ -162,5 +203,55 @@ export const getAvailableCaptains = asyncHandler(async (req, res) => {
     success: true,
     count: captains.length,
     data: captains
+  });
+});
+
+// @desc    Set app role (Viewer/Captain)
+// @route   PATCH /api/users/:id/role
+// @access  Private/Admin
+export const setAppRole = asyncHandler(async (req, res) => {
+  const { appRole } = req.body;
+  if (!['captain', 'viewer', 'Captain', 'Viewer'].includes(appRole)) {
+    throw new AppError("appRole must be 'Captain' or 'Viewer'", 400);
+  }
+
+  const user = await User.findById(req.params.id).select('-password');
+  if (!user) throw new AppError('User not found', 404);
+
+  const currentRole = user.appRole || user.role;
+  if (currentRole === 'admin') {
+    throw new AppError("Cannot change the Admin account's role", 403);
+  }
+
+  const normalized = String(appRole).toLowerCase();
+  user.appRole = normalized;
+  user.role = normalized;
+  await user.save();
+
+  res.json({
+    success: true,
+    message: 'App role updated',
+    data: user
+  });
+});
+
+// @desc    Reset user password
+// @route   PATCH /api/users/:id/password
+// @access  Private/Admin
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || String(newPassword).length < 6) {
+    throw new AppError('newPassword must be at least 6 characters', 400);
+  }
+
+  const user = await User.findById(req.params.id).select('+password');
+  if (!user) throw new AppError('User not found', 404);
+
+  user.password = newPassword;
+  await user.save();
+
+  res.json({
+    success: true,
+    message: 'Password updated'
   });
 });

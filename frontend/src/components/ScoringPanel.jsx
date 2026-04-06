@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
 import { AlertTriangle, Undo2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { matchService } from '../services/matchService.js';
 import { Loader } from './common/Loader.jsx';
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
+import socket from '../utils/socket.js';
 
 const oversFromBalls = (balls = 0) => `${Math.floor((balls || 0) / 6)}.${(balls || 0) % 6}`;
 const numeric = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
@@ -96,13 +94,14 @@ export const ScoringPanel = ({ matchId }) => {
         if (mounted) setLoading(false);
       }
 
-      const s = io(SOCKET_URL, { transports: ['websocket'], autoConnect: true });
+      const s = socket;
       socketRef.current = s;
+      s.connect();
 
       s.on('connect', () => {
         setSocketOk(true);
         stopPolling();
-        s.emit('join-match', matchId);
+        s.emit('join_match', matchId);
       });
       s.on('disconnect', () => {
         setSocketOk(false);
@@ -138,7 +137,7 @@ export const ScoringPanel = ({ matchId }) => {
       stopPolling();
       const s = socketRef.current;
       if (s) {
-        try { s.emit('leave-match', matchId); } catch { /**/ }
+        try { s.emit('leave_match', matchId); } catch { /**/ }
         s.disconnect();
       }
       socketRef.current = null;

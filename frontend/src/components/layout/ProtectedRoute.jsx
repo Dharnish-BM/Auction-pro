@@ -2,9 +2,13 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { Loader } from '../common/Loader.jsx';
 
-export const ProtectedRoute = ({ children, allowedRoles = [] }) => {
+export const ProtectedRoute = ({ children, allowedRoles = [], routeType = 'protected' }) => {
   const { isAuthenticated, user, loading } = useAuth();
   const location = useLocation();
+
+  if (routeType === 'publicMatch') {
+    return children;
+  }
 
   if (loading) {
     return (

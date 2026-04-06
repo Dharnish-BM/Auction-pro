@@ -1,6 +1,13 @@
 import mongoose from 'mongoose';
 
 const playerSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    unique: true,
+    sparse: true
+  },
   name: {
     type: String,
     required: [true, 'Please provide player name'],
@@ -22,6 +29,7 @@ const playerSchema = new mongoose.Schema({
   basePrice: {
     type: Number,
     required: [true, 'Please provide base price'],
+    default: 5000,
     min: [0, 'Base price cannot be negative']
   },
   soldPrice: {

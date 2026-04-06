@@ -25,10 +25,23 @@ const userSchema = new mongoose.Schema({
     minlength: [6, 'Password must be at least 6 characters'],
     select: false
   },
+  appRole: {
+    type: String,
+    enum: ['admin', 'captain', 'viewer'],
+    default: 'viewer'
+  },
+  // Backward-compatible alias for legacy code paths.
   role: {
     type: String,
     enum: ['admin', 'captain', 'viewer'],
     default: 'viewer'
+  },
+  playerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player',
+    default: null,
+    unique: true,
+    sparse: true
   },
   teamId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -41,6 +54,15 @@ const userSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+});
+
+userSchema.pre('validate', function(next) {
+  if (this.appRole && !this.role) this.role = this.appRole;
+  if (this.role && !this.appRole) this.appRole = this.role;
+  if (this.appRole && this.role && this.appRole !== this.role) {
+    this.role = this.appRole;
+  }
+  next();
 });
 
 // Hash password before saving

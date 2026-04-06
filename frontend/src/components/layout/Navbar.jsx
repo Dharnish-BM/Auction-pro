@@ -130,15 +130,9 @@ export const Navbar = () => {
                 <div className="flex items-center space-x-2">
                   <Link
                     to="/login"
-                    className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
-                  >
-                    Login
-                  </Link>
-                  <Link
-                    to="/register"
                     className="px-4 py-2 text-sm font-medium bg-neon-green text-sports-darker rounded-lg hover:shadow-neon transition-all duration-200"
                   >
-                    Register
+                    Login
                   </Link>
                 </div>
               )}

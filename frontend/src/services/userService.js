@@ -25,6 +25,18 @@ export const userService = {
     return response.data;
   },
 
+  // Set app role (admin only)
+  setAppRole: async (id, appRole) => {
+    const response = await api.patch(`/users/${id}/role`, { appRole });
+    return response.data;
+  },
+
+  // Reset user password (admin only)
+  resetPassword: async (id, newPassword) => {
+    const response = await api.patch(`/users/${id}/password`, { newPassword });
+    return response.data;
+  },
+
   // Activate user (admin only)
   activate: async (id) => {
     const response = await api.patch(`/users/${id}/activate`);

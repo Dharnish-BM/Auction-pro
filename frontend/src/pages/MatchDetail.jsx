@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { X } from 'lucide-react';
 import { Loader } from '../components/common/Loader.jsx';
 import { AuctionRoom } from '../components/AuctionRoom.jsx';
 import { ScoringPanel } from '../components/ScoringPanel.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { matchService } from '../services/matchService.js';
+import { teamService } from '../services/teamService.js';
 
 const TABS = ['setup', 'auction', 'teams', 'scorecard'];
 
@@ -119,6 +121,15 @@ export const MatchDetail = () => {
       setSearchParams({ tab: 'auction' });
     } catch (e) {
       toast.error(e.message || 'Failed to start auction');
+    }
+  };
+
+  const refreshOverviewInPlace = async () => {
+    try {
+      const res = await matchService.getOverview(id);
+      setOverview(res.data);
+    } catch (e) {
+      toast.error(e.message || 'Failed to refresh match overview');
     }
   };
 
@@ -313,6 +324,9 @@ export const MatchDetail = () => {
               <div className="grid md:grid-cols-2 gap-6">
                 {(overview.teams || []).map((t) => {
                   const spent = (t.totalBudget || 0) - (t.remainingBudget || 0);
+                  const pool = overview.playerPool || overview.match?.playerPool || [];
+                  const allSquadIds = new Set((overview.teams || []).flatMap(tt => (tt.players || []).map(pp => String(pp._id))));
+                  const availableToAdd = pool.filter(p => !allSquadIds.has(String(p._id)));
                   return (
                     <div key={t._id} className="p-4 rounded-xl bg-sports-border/30 border border-sports-border">
                       <div className="flex items-start justify-between gap-3 mb-3">
@@ -328,7 +342,33 @@ export const MatchDetail = () => {
                       <div className="space-y-2">
                         {(t.players || []).map((p) => (
                           <div key={p._id} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-200">{p.nickname || p.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-200">{p.nickname || p.name}</span>
+                              {isAdmin() && (
+                                <button
+                                  onClick={async () => {
+                                    if (!window.confirm(`Remove ${p.nickname || p.name} from ${t.name}? This does not affect auction history.`)) return;
+                                    try {
+                                      await teamService.removePlayer(t._id, p._id);
+                                      setOverview(prev => {
+                                        if (!prev) return prev;
+                                        const nextTeams = (prev.teams || []).map(tt => {
+                                          if (String(tt._id) !== String(t._id)) return tt;
+                                          return { ...tt, players: (tt.players || []).filter(pp => String(pp._id) !== String(p._id)) };
+                                        });
+                                        return { ...prev, teams: nextTeams };
+                                      });
+                                    } catch (e) {
+                                      toast.error(e.message || 'Failed to remove player');
+                                    }
+                                  }}
+                                  className="p-1 rounded-md text-gray-400 hover:text-red-400 hover:bg-red-400/10"
+                                  title="Remove from squad"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2">
                               {roleBadge(p.role)}
                               <span className="text-gold">₹{(p.soldPrice || 0).toLocaleString()}</span>
@@ -337,9 +377,29 @@ export const MatchDetail = () => {
                         ))}
                       </div>
                       {isAdmin() && (
-                        <button className="mt-4 px-4 py-2 rounded-lg bg-white/5 text-gray-200 hover:bg-white/10">
-                          Adjust Squad
-                        </button>
+                        <div className="mt-4 flex items-center gap-2">
+                          <select
+                            className="flex-1"
+                            defaultValue=""
+                            onChange={async (e) => {
+                              const pid = e.target.value;
+                              if (!pid) return;
+                              try {
+                                await teamService.editSquad(t._id, { addPlayerIds: [pid] });
+                                await refreshOverviewInPlace();
+                              } catch (err) {
+                                toast.error(err.message || 'Failed to add player');
+                              } finally {
+                                e.target.value = '';
+                              }
+                            }}
+                          >
+                            <option value="">Add Player to Squad…</option>
+                            {availableToAdd.map(p => (
+                              <option key={p._id} value={p._id}>{p.nickname || p.name} ({p.role})</option>
+                            ))}
+                          </select>
+                        </div>
                       )}
                     </div>
                   );

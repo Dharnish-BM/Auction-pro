@@ -12,8 +12,9 @@ export const auctionService = {
   },
 
   // Place bid (captain only)
-  placeBid: async (id, amount) => {
-    const response = await api.post(`/auctions/${id}/bid`, { amount });
+  placeBid: async (id, amount, teamId = null) => {
+    const payload = teamId ? { teamId, amount } : { amount };
+    const response = await api.post(`/auctions/${id}/bid`, payload);
     return response.data;
   },
 

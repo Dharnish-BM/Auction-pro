@@ -317,6 +317,11 @@ const matchSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Indexes for fast dashboards and stats aggregation
+matchSchema.index({ status: 1, date: -1 });
+matchSchema.index({ 'innings.overs.deliveries.batsmanId': 1 });
+matchSchema.index({ 'innings.overs.deliveries.bowlerId': 1 });
+
 // Calculate derived stats
 matchSchema.methods.calculateRunRate = function(team) {
   const score = team === 'A' ? this.scorecard.teamAScore : this.scorecard.teamBScore;

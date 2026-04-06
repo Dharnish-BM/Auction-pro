@@ -25,9 +25,9 @@ export const Players = () => {
   const [formData, setFormData] = useState({
     name: '',
     role: 'Batsman',
-    basePrice: '',
-    battingStyle: '',
-    bowlingStyle: '',
+    basePrice: 5000,
+    battingStyle: 'Right-hand bat',
+    bowlingStyle: 'Right-arm medium',
     stats: {
       matches: 0,
       runs: 0,
@@ -35,11 +35,16 @@ export const Players = () => {
     }
   });
 
-  const roles = ['Batsman', 'Bowler', 'All-Rounder', 'Wicket-Keeper'];
-  const battingStyles = ['Right-handed', 'Left-handed'];
+  const roles = ['Batsman', 'Bowler', 'All-rounder', 'Wicket-keeper'];
+  const battingStyles = ['Right-hand bat', 'Left-hand bat'];
   const bowlingStyles = [
-    'Right-arm Fast', 'Right-arm Medium', 'Right-arm Off-spin', 'Right-arm Leg-spin',
-    'Left-arm Fast', 'Left-arm Medium', 'Left-arm Spin'
+    'Right-arm fast',
+    'Right-arm medium',
+    'Left-arm fast',
+    'Left-arm medium',
+    'Right-arm off-spin',
+    'Left-arm spin',
+    'Right-arm leg-spin'
   ];
 
   useEffect(() => {
@@ -103,9 +108,9 @@ export const Players = () => {
     setFormData({
       name: '',
       role: 'Batsman',
-      basePrice: '',
-      battingStyle: '',
-      bowlingStyle: '',
+      basePrice: 5000,
+      battingStyle: 'Right-hand bat',
+      bowlingStyle: 'Right-arm medium',
       stats: { matches: 0, runs: 0, wickets: 0 }
     });
   };
@@ -208,6 +213,8 @@ export const Players = () => {
                 <tr className="border-b border-sports-border">
                   <th className="text-left py-4 px-4 text-gray-400 font-medium">Player</th>
                   <th className="text-left py-4 px-4 text-gray-400 font-medium">Role</th>
+                  <th className="text-left py-4 px-4 text-gray-400 font-medium">Batting Style</th>
+                  <th className="text-left py-4 px-4 text-gray-400 font-medium">Bowling Style</th>
                   <th className="text-left py-4 px-4 text-gray-400 font-medium">Base Price</th>
                   <th className="text-left py-4 px-4 text-gray-400 font-medium">Status</th>
                   <th className="text-right py-4 px-4 text-gray-400 font-medium">Actions</th>
@@ -235,8 +242,10 @@ export const Players = () => {
                         {player.role}
                       </span>
                     </td>
+                    <td className="py-4 px-4 text-gray-300">{player.battingStyle || '-'}</td>
+                    <td className="py-4 px-4 text-gray-300">{player.bowlingStyle || '-'}</td>
                     <td className="py-4 px-4 text-white">
-                      ₹{player.basePrice.toLocaleString()}
+                      ₹{Number(player.basePrice || 5000).toLocaleString()}
                     </td>
                     <td className="py-4 px-4">
                       {getStatusBadge(player)}
@@ -331,7 +340,7 @@ export const Players = () => {
                   <input
                     type="number"
                     value={formData.basePrice}
-                    onChange={(e) => setFormData({ ...formData, basePrice: parseInt(e.target.value) || '' })}
+                    onChange={(e) => setFormData({ ...formData, basePrice: parseInt(e.target.value, 10) || 5000 })}
                     required
                     min="0"
                     step="1000"

@@ -10,48 +10,6 @@ const generateToken = (id) => {
   });
 };
 
-// @desc    Register new user
-// @route   POST /api/auth/register
-// @access  Public
-export const register = asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  const { name, email, password } = req.body;
-
-  // Check if user exists
-  const userExists = await User.findOne({ email });
-  if (userExists) {
-    throw new AppError('User already exists with this email', 400);
-  }
-
-  // Create user
-  const user = await User.create({
-    name,
-    email,
-    password,
-    role: 'viewer'
-  });
-
-  if (user) {
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        token: generateToken(user._id)
-      }
-    });
-  } else {
-    throw new AppError('Invalid user data', 400);
-  }
-});
-
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
@@ -82,6 +40,18 @@ export const login = asyncHandler(async (req, res) => {
     throw new AppError('Invalid credentials', 401);
   }
 
+  // Bootstrap: ensure configured admin email remains admin.
+  const adminEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const userEmail = String(user.email || '').trim().toLowerCase();
+  if (adminEmail && userEmail === adminEmail) {
+    const currentRole = String(user.appRole || user.role || '').trim().toLowerCase();
+    if (currentRole !== 'admin') {
+      user.appRole = 'admin';
+      user.role = 'admin';
+      await user.save();
+    }
+  }
+
   res.json({
     success: true,
     message: 'Login successful',
@@ -89,7 +59,9 @@ export const login = asyncHandler(async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      role: user.role,
+      appRole: user.appRole || user.role,
+      role: user.appRole || user.role,
+      playerId: user.playerId,
       teamId: user.teamId,
       token: generateToken(user._id)
     }

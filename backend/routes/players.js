@@ -1,6 +1,5 @@
 import express from 'express';
 import {
-    bulkCreatePlayers,
     createPlayer,
     deletePlayer,
     getLeaderboard,
@@ -13,12 +12,12 @@ import {
     resetPlayerStatus,
     updatePlayer
 } from '../controllers/playerController.js';
-import { isAdmin, protect } from '../middleware/auth.js';
+import { isAdmin, optionalAuth, protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Public routes
-router.get('/leaderboard', getLeaderboard);
+router.get('/leaderboard', optionalAuth, getLeaderboard);
 
 // Protected routes
 router.get('/', protect, getPlayers);
@@ -27,7 +26,6 @@ router.get('/:id/career', protect, getPlayerCareer);
 router.get('/:id', protect, getPlayer);
 
 // Admin only routes
-router.post('/bulk', protect, isAdmin, bulkCreatePlayers);
 router.post('/', protect, isAdmin, createPlayer);
 router.put('/:id', protect, isAdmin, updatePlayer);
 router.delete('/:id', protect, isAdmin, deletePlayer);

@@ -1,7 +1,10 @@
 import api from './api.js';
 import axios from 'axios';
 
-const PUBLIC_API_URL = import.meta.env.VITE_API_URL || '/api';
+const PUBLIC_API_URL =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.REACT_APP_API_URL ||
+  '/api';
 const publicApi = axios.create({
   baseURL: PUBLIC_API_URL,
   headers: { 'Content-Type': 'application/json' }

@@ -23,11 +23,11 @@ import userRoutes from './routes/users.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // Import socket handlers
-import { emitToAuction, initAuctionSocket } from './sockets/auctionSocket.js';
-import { initScoreboardSocket } from './sockets/scoreboardSocket.js';
+import { initSocket } from './utils/socket.js';
 
 // Import auction controller to inject emitters
 import { setAuctionEmitters } from './controllers/auctionController.js';
+import { emitToAuction } from './sockets/auctionSocket.js';
 
 // Connect to database
 connectDB();
@@ -38,19 +38,59 @@ const httpServer = createServer(app);
 // Socket.IO setup
 const io = new Server(httpServer, {
   cors: {
-    origin: 'https://auction-pro-zmps.vercel.app' || 'http://localhost:5173',
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     methods: ['GET', 'POST'],
     credentials: true
   }
 });
 
-// Initialize socket handlers
-initAuctionSocket(io);
-initScoreboardSocket(io);
+// Init socket util for controllers/helpers
+initSocket(io);
 
 // Inject socket emitters into auction controller to avoid circular dependency
 setAuctionEmitters({
   emitToAuction
+});
+
+io.on('connection', (socket) => {
+  // New canonical events
+  socket.on('join_match', (matchId) => {
+    if (!matchId) return;
+    socket.join(`match:${matchId}`);
+  });
+
+  socket.on('join_auction', (auctionId) => {
+    if (!auctionId) return;
+    socket.join(`auction:${auctionId}`);
+  });
+
+  socket.on('leave_match', (matchId) => {
+    if (!matchId) return;
+    socket.leave(`match:${matchId}`);
+  });
+
+  socket.on('leave_auction', (auctionId) => {
+    if (!auctionId) return;
+    socket.leave(`auction:${auctionId}`);
+  });
+
+  // Backward compatible aliases (older frontend)
+  socket.on('join-match', (matchId) => {
+    if (!matchId) return;
+    socket.join(`match:${matchId}`);
+  });
+  socket.on('leave-match', (matchId) => {
+    if (!matchId) return;
+    socket.leave(`match:${matchId}`);
+  });
+  socket.on('join-auction', ({ auctionId }) => {
+    if (!auctionId) return;
+    socket.join(`auction:${auctionId}`);
+  });
+  socket.on('leave-auction', ({ auctionId }) => {
+    if (!auctionId) return;
+    socket.leave(`auction:${auctionId}`);
+  });
 });
 
 // Middleware

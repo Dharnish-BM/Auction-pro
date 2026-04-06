@@ -55,12 +55,6 @@ export const playerService = {
     return response.data;
   },
 
-  // Bulk create players (admin only)
-  bulkCreate: async (players) => {
-    const response = await api.post('/players/bulk', { players });
-    return response.data;
-  },
-
   // Player career profile
   getCareer: async (id) => {
     const response = await api.get(`/players/${id}/career`);

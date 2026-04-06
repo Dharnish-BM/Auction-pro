@@ -41,5 +41,15 @@ export const teamService = {
   getStats: async (id) => {
     const response = await api.get(`/teams/${id}/stats`);
     return response.data;
+  },
+
+  editSquad: async (id, payload) => {
+    const response = await api.patch(`/teams/${id}/squad`, payload);
+    return response.data;
+  },
+
+  removePlayer: async (id, playerId) => {
+    const response = await api.delete(`/teams/${id}/players/${playerId}`);
+    return response.data;
   }
 };
