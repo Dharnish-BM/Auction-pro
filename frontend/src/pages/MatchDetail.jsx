@@ -11,6 +11,8 @@ import { teamService } from '../services/teamService.js';
 
 const TABS = ['setup', 'auction', 'teams', 'scorecard'];
 
+const money = (n) => `₹${Number(n || 0).toLocaleString()}`;
+
 const roleBadge = (role) => {
   const colors = {
     Batsman: 'bg-neon-green/10 text-neon-green border-neon-green/20',
@@ -36,11 +38,22 @@ export const MatchDetail = () => {
   const [poolLoading, setPoolLoading] = useState(false);
   const [allPlayers, setAllPlayers] = useState([]);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [directTossWinnerId, setDirectTossWinnerId] = useState('');
+  const [directBattingFirstId, setDirectBattingFirstId] = useState('');
 
   const match = overview?.match;
   const matchStatus = match?.status;
+  const hasAuction = Boolean(overview?.auction?._id);
+  const flowMode = hasAuction ? 'auction' : 'direct';
+  const inningsSummaries = overview?.inningsSummaries || [];
+  const result = overview?.result;
 
   const canEditSetup = isAuthenticated && isAdmin() && matchStatus === 'setup';
+  const availableTeams = useMemo(() => {
+    const fromOverview = overview?.teams || [];
+    if (fromOverview.length >= 2) return fromOverview;
+    return [overview?.match?.teamA, overview?.match?.teamB].filter(Boolean);
+  }, [overview]);
 
   const loadOverview = async () => {
     setLoading(true);
@@ -82,10 +95,28 @@ export const MatchDetail = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, id]);
 
+  useEffect(() => {
+    if (!availableTeams.length) return;
+    if (!directTossWinnerId) setDirectTossWinnerId(String(availableTeams[0]._id));
+    if (!directBattingFirstId) setDirectBattingFirstId(String(availableTeams[0]._id));
+  }, [availableTeams, directBattingFirstId, directTossWinnerId]);
+
   const tabLink = (nextTab) => `/matches/${id}?tab=${nextTab}`;
 
   const poolCount = selectedIds.size;
   const canStartAuction = canEditSetup && poolCount >= 4;
+  const totalPlayersAssigned = useMemo(
+    () => (overview?.teams || []).reduce((sum, t) => sum + ((t.players || []).length), 0),
+    [overview?.teams]
+  );
+  const teamSummary = useMemo(
+    () => (overview?.teams || []).map((t) => ({
+      ...t,
+      spent: (t.totalBudget || 0) - (t.remainingBudget || 0),
+      count: (t.players || []).length
+    })),
+    [overview?.teams]
+  );
 
   const onTogglePlayer = (playerId) => {
     setSelectedIds(prev => {
@@ -112,7 +143,7 @@ export const MatchDetail = () => {
       // default config for now; can be made configurable later
       await matchService.createAuction(id, {
         budgetPerTeam: 100000,
-        basePrice: 0,
+        basePrice: 5000,
         bidIncrement: 1000,
         timerSeconds: 15
       });
@@ -121,6 +152,21 @@ export const MatchDetail = () => {
       setSearchParams({ tab: 'auction' });
     } catch (e) {
       toast.error(e.message || 'Failed to start auction');
+    }
+  };
+
+  const onStartWithoutAuction = async () => {
+    if (!directTossWinnerId || !directBattingFirstId) {
+      toast.error('Select toss winner and batting first team');
+      return;
+    }
+    try {
+      await matchService.setToss(id, directTossWinnerId, directBattingFirstId);
+      toast.success('Match moved to live without auction');
+      await loadOverview();
+      setSearchParams({ tab: 'scorecard' });
+    } catch (e) {
+      toast.error(e.message || 'Failed to start match without auction');
     }
   };
 
@@ -166,6 +212,17 @@ export const MatchDetail = () => {
           <p className="text-gray-400">
             {match.venue || match.location} • {new Date(match.date).toLocaleDateString()} • {match.time}
           </p>
+          <div className="mt-2">
+            <span
+              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                flowMode === 'auction'
+                  ? 'bg-gold/10 text-gold border-gold/30'
+                  : 'bg-neon-blue/10 text-neon-blue border-neon-blue/30'
+              }`}
+            >
+              {flowMode === 'auction' ? 'Auction Mode' : 'Direct Mode'}
+            </span>
+          </div>
         </div>
         <Link
           to={`/matches/${id}/live`}
@@ -278,18 +335,50 @@ export const MatchDetail = () => {
           </div>
 
           <div className="sports-card flex items-center justify-between gap-4">
-            <div>
+            <div className="flex-1">
               <p className="text-sm text-gray-400">Status</p>
               <p className="text-white font-semibold capitalize">{matchStatus}</p>
+              {canEditSetup && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Choose flow: run auction OR start match directly with current team squads.
+                </p>
+              )}
             </div>
             {canEditSetup && (
-              <button
-                onClick={onStartAuction}
-                disabled={!canStartAuction}
-                className="px-6 py-2 rounded-lg bg-gold text-sports-darker font-semibold disabled:opacity-50"
-              >
-                Start Auction
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  onClick={onStartAuction}
+                  disabled={!canStartAuction}
+                  className="px-5 py-2 rounded-lg bg-gold text-sports-darker font-semibold disabled:opacity-50"
+                >
+                  Start Auction
+                </button>
+                <select
+                  value={directTossWinnerId}
+                  onChange={(e) => setDirectTossWinnerId(e.target.value)}
+                  className="min-w-44"
+                >
+                  {availableTeams.map((t) => (
+                    <option key={t._id} value={t._id}>Toss: {t.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={directBattingFirstId}
+                  onChange={(e) => setDirectBattingFirstId(e.target.value)}
+                  className="min-w-44"
+                >
+                  {availableTeams.map((t) => (
+                    <option key={t._id} value={t._id}>Bat first: {t.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={onStartWithoutAuction}
+                  disabled={availableTeams.length < 2 || poolCount < 2}
+                  className="px-5 py-2 rounded-lg bg-neon-blue text-sports-darker font-semibold disabled:opacity-50"
+                >
+                  Start Match (No Auction)
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -297,11 +386,37 @@ export const MatchDetail = () => {
 
       {activeTab === 'auction' && (
         <div className="space-y-6">
-          {matchStatus === 'setup' && <p className="text-gray-400">Auction not started yet.</p>}
+          {matchStatus === 'setup' && (
+            <div className="sports-card">
+              <h2 className="text-lg font-semibold text-white mb-2">Auction Not Started</h2>
+              <p className="text-gray-400 text-sm">
+                You can either start auction from Setup tab, or skip auction and start match directly.
+              </p>
+            </div>
+          )}
           {matchStatus === 'auction_done' && (
             <div className="sports-card">
               <h2 className="text-lg font-semibold text-white mb-3">Auction Summary</h2>
-              <p className="text-gray-400 text-sm">Summary UI will be improved in Prompt 7.</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                {(teamSummary || []).map((t) => (
+                  <div key={t._id} className="p-4 rounded-xl bg-sports-border/30 border border-sports-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-white font-semibold">{t.name}</p>
+                      <p className="text-sm text-gray-300">{t.count} players</p>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Spent {money(t.spent)} / {money(t.totalBudget)}</p>
+                    <div className="space-y-1 max-h-44 overflow-y-auto">
+                      {(t.players || []).map((p) => (
+                        <div key={p._id} className="flex items-center justify-between text-sm">
+                          <span className="text-gray-200">{p.nickname || p.name}</span>
+                          <span className="text-gold">{money(p.soldPrice || 0)}</span>
+                        </div>
+                      ))}
+                      {(t.players || []).length === 0 && <p className="text-xs text-gray-500">No players bought.</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {matchStatus === 'auction' && (
@@ -318,9 +433,14 @@ export const MatchDetail = () => {
 
       {activeTab === 'teams' && (
         <div className="sports-card">
-          {['auction_done', 'live', 'completed', 'innings_break'].includes(matchStatus) ? (
+          {['setup', 'auction_done', 'live', 'completed', 'innings_break', 'auction'].includes(matchStatus) ? (
             <div>
-              <h2 className="text-lg font-semibold text-white mb-4">Teams</h2>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-white">Teams</h2>
+                <span className="px-2 py-1 rounded-full text-xs bg-sports-border text-gray-300">
+                  Total Assigned: {totalPlayersAssigned}
+                </span>
+              </div>
               <div className="grid md:grid-cols-2 gap-6">
                 {(overview.teams || []).map((t) => {
                   const spent = (t.totalBudget || 0) - (t.remainingBudget || 0);
@@ -407,7 +527,7 @@ export const MatchDetail = () => {
               </div>
             </div>
           ) : (
-            <p className="text-gray-400">Teams will be available after the auction is complete.</p>
+            <p className="text-gray-400">Teams are not available for this match state yet.</p>
           )}
         </div>
       )}
@@ -433,7 +553,29 @@ export const MatchDetail = () => {
             </div>
           )}
           {matchStatus === 'completed' && (
-            <div className="space-y-2">
+            <div className="space-y-4">
+              {result && (
+                <div className="p-4 rounded-xl bg-neon-green/5 border border-neon-green/20">
+                  <p className="text-white font-semibold mb-1">Result</p>
+                  <p className="text-gray-300 text-sm capitalize">
+                    {result.winner?.name
+                      ? `${result.winner.name} won by ${result.margin || 0} ${result.marginType || ''}`
+                      : result.marginType || 'No result'}
+                  </p>
+                </div>
+              )}
+              {inningsSummaries.length > 0 && (
+                <div className="grid md:grid-cols-2 gap-3">
+                  {inningsSummaries.map((inn) => (
+                    <div key={`i-${inn.inningsNumber}`} className="p-3 rounded-lg bg-sports-border/30 border border-sports-border">
+                      <p className="text-white font-medium mb-1">Innings {inn.inningsNumber}</p>
+                      <p className="text-sm text-gray-300">
+                        {inn.totalRuns || 0}/{inn.totalWickets || 0} in {Math.floor((inn.totalBalls || 0) / 6)}.{(inn.totalBalls || 0) % 6} overs
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <p className="text-gray-300">Match completed. View full public scorecard.</p>
               <Link to={`/matches/${id}/live`} className="inline-flex px-4 py-2 rounded-lg bg-neon-blue text-sports-darker font-semibold">
                 Open Final Scoreboard

@@ -20,14 +20,39 @@ const assertCaptainAppRole = (user) => {
 // @route   GET /api/teams
 // @access  Private
 export const getTeams = asyncHandler(async (req, res) => {
-  const teams = await Team.find()
-    .populate('captain', 'name email')
-    .populate('players', 'name role soldPrice');
+  const teams = await Team.find().lean();
+
+  const captainIds = [...new Set(
+    teams
+      .map((t) => t.captain)
+      .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
+      .map(String)
+  )];
+
+  const playerIds = [...new Set(
+    teams
+      .flatMap((t) => t.players || [])
+      .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
+      .map(String)
+  )];
+
+  const [captains, players] = await Promise.all([
+    captainIds.length ? User.find({ _id: { $in: captainIds } }).select('name email').lean() : [],
+    playerIds.length ? Player.find({ _id: { $in: playerIds } }).select('name role soldPrice').lean() : []
+  ]);
+
+  const captainMap = new Map(captains.map((u) => [String(u._id), u]));
+  const playerMap = new Map(players.map((p) => [String(p._id), p]));
+  const hydrated = teams.map((t) => ({
+    ...t,
+    captain: captainMap.get(String(t.captain)) || null,
+    players: (t.players || []).map((pid) => playerMap.get(String(pid))).filter(Boolean)
+  }));
 
   res.json({
     success: true,
-    count: teams.length,
-    data: teams
+    count: hydrated.length,
+    data: hydrated
   });
 });
 

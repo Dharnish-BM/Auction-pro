@@ -4,11 +4,12 @@ import Auction from '../models/Auction.js';
 import LiveMatchState from '../models/LiveMatchState.js';
 import Player from '../models/Player.js';
 import Team from '../models/Team.js';
+import User from '../models/User.js';
 import { emitToMatch } from '../sockets/scoreboardSocket.js';
 import { aggregateCareerStats } from '../utils/statsAggregator.js';
 
 const VALID_MATCH_STATUS_TRANSITIONS = new Map([
-  ['setup', new Set(['auction'])],
+  ['setup', new Set(['auction', 'live'])],
   ['auction', new Set(['auction_done'])],
   ['auction_done', new Set(['live'])],
   ['live', new Set(['innings_break', 'completed'])],
@@ -773,16 +774,14 @@ export const setToss = asyncHandler(async (req, res) => {
     throw new AppError('Match not found', 404);
   }
 
-  if (match.status !== 'auction_done') {
-    throw new AppError("Toss can only be set when match status is 'auction_done'", 400);
+  if (!['setup', 'auction_done'].includes(match.status)) {
+    throw new AppError("Toss can only be set when match status is 'setup' or 'auction_done'", 400);
   }
 
-  // Teams formed in this match's auction are inferred from auctions belonging to this match.
-  const auctionTeamIds = await Auction.distinct('soldTo', { matchId: match._id, soldTo: { $ne: null } });
-  const allowedTeamIds = auctionTeamIds.map(String);
+  const allowedTeamIds = [match.teamA, match.teamB].filter(Boolean).map(String);
 
   if (!allowedTeamIds.includes(String(tossWinnerId)) || !allowedTeamIds.includes(String(battingFirstId))) {
-    throw new AppError('Both teams must be teams formed in this match auction', 400);
+    throw new AppError('Both teams must be one of the two teams assigned to this match', 400);
   }
 
   const [tossWinnerTeam, battingFirstTeam] = await Promise.all([
@@ -860,11 +859,39 @@ export const getMatchOverview = asyncHandler(async (req, res) => {
       }))
   };
 
-  // Match-scoped teams/squads inferred from auction results
-  const teamIds = [...new Set(auctionRows.filter(a => a.soldTo).map(a => String(a.soldTo._id)))];
-  const teams = await Team.find({ _id: { $in: teamIds } })
-    .populate('captain', 'name email')
-    .populate('players', 'name nickname role battingStyle bowlingStyle soldPrice');
+  // Match-scoped teams should always include match.teamA/teamB.
+  // Auction-derived team ids are included for backward compatibility.
+  const teamIds = [...new Set([
+    ...[match.teamA, match.teamB].filter(Boolean).map(String),
+    ...auctionRows.filter(a => a.soldTo).map(a => String(a.soldTo._id))
+  ])];
+  const validTeamIds = teamIds.filter((tid) => /^[a-fA-F0-9]{24}$/.test(String(tid)));
+  const teamsRaw = await Team.find({ _id: { $in: validTeamIds } }).lean();
+  const captainIds = [...new Set(
+    teamsRaw
+      .map((t) => t.captain)
+      .filter((id) => /^[a-fA-F0-9]{24}$/.test(String(id)))
+      .map(String)
+  )];
+  const teamPlayerIds = [...new Set(
+    teamsRaw
+      .flatMap((t) => t.players || [])
+      .filter((id) => /^[a-fA-F0-9]{24}$/.test(String(id)))
+      .map(String)
+  )];
+  const [captains, teamPlayers] = await Promise.all([
+    captainIds.length ? User.find({ _id: { $in: captainIds } }).select('name email').lean() : [],
+    teamPlayerIds.length
+      ? Player.find({ _id: { $in: teamPlayerIds } }).select('name nickname role battingStyle bowlingStyle soldPrice').lean()
+      : []
+  ]);
+  const captainMap = new Map(captains.map((u) => [String(u._id), u]));
+  const teamPlayerMap = new Map(teamPlayers.map((p) => [String(p._id), p]));
+  const teams = teamsRaw.map((t) => ({
+    ...t,
+    captain: captainMap.get(String(t.captain)) || null,
+    players: (t.players || []).map((pid) => teamPlayerMap.get(String(pid))).filter(Boolean)
+  }));
 
   // Innings summaries (totals only)
   const inningsSummaries = (match.innings?.length ? match.innings : []).map((inn) => ({

@@ -43,6 +43,11 @@ export const matchService = {
     return response.data;
   },
 
+  setToss: async (id, tossWinnerId, battingFirstId) => {
+    const response = await api.post(`/matches/${id}/toss`, { tossWinnerId, battingFirstId });
+    return response.data;
+  },
+
   // Public live endpoints (no auth)
   getLivePublic: async (id) => {
     const response = await publicApi.get(`/matches/${id}/live`);
