@@ -1,49 +1,73 @@
-// eslint-disable-next-line no-unused-vars
-import { motion } from 'framer-motion';
-import {
-    Activity,
-    ArrowRight,
-    Calendar,
-    DollarSign,
-    Gavel,
-    Trophy, Users
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader } from '../components/common/Loader.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { matchService } from '../services/matchService.js';
 import { playerService } from '../services/playerService.js';
-import { teamService } from '../services/teamService.js';
 
 export const Dashboard = () => {
-  const { user, isAdmin, isCaptain } = useAuth();
-  const [stats, setStats] = useState(null);
-  const [team, setTeam] = useState(null);
-  const [upcomingMatches, setUpcomingMatches] = useState([]);
+  const { user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [liveMatches, setLiveMatches] = useState([]);
+  const [upcomingMatches, setUpcomingMatches] = useState([]);
+  const [completedMatches, setCompletedMatches] = useState([]);
+  const [leaderboard, setLeaderboard] = useState({ topRuns: [], topWickets: [] });
+  const [myCareer, setMyCareer] = useState(null);
+  const [recentResultMeta, setRecentResultMeta] = useState(null);
+  const [liveScorePreview, setLiveScorePreview] = useState(null);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchDashboard = async () => {
       try {
         setLoading(true);
-        
-        // Fetch player stats
-        const playerStats = await playerService.getStatsSummary();
-        
-        // Fetch upcoming matches
-        const matches = await matchService.getUpcoming();
-        
-        // If captain, fetch team details
-        let teamData = null;
-        if (isCaptain() && user?.teamId) {
-          const teamRes = await teamService.getById(user.teamId);
-          teamData = teamRes.data;
+        const [live, upcoming, allMatches, lb, allPlayers] = await Promise.all([
+          matchService.getLive(),
+          matchService.getUpcoming(),
+          matchService.getAll(),
+          playerService.getLeaderboard(),
+          playerService.getAll()
+        ]);
+
+        const completed = (allMatches.data || []).filter((m) => m.status === 'completed')
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        setLiveMatches(live.data || []);
+        setUpcomingMatches(upcoming.data || []);
+        setCompletedMatches(completed);
+        setLeaderboard(lb.data || { topRuns: [], topWickets: [] });
+
+        if ((live.data || [])[0]?._id) {
+          const liveScore = await matchService.getScorecardPublic((live.data || [])[0]._id);
+          setLiveScorePreview(liveScore.data?.innings || []);
+        } else {
+          setLiveScorePreview(null);
         }
 
-        setStats(playerStats.data);
-        setUpcomingMatches(matches.data || []);
-        setTeam(teamData);
+        const linked = (allPlayers.data || []).find((p) => {
+          const n = (p.name || '').toLowerCase();
+          const nn = (p.nickname || '').toLowerCase();
+          const un = (user?.name || '').toLowerCase();
+          return un && (un === n || un === nn);
+        });
+
+        if (linked?._id) {
+          const career = await playerService.getCareer(linked._id);
+          setMyCareer(career.data);
+        } else {
+          setMyCareer(null);
+        }
+
+        if (completed[0]?._id) {
+          const score = await matchService.getScorecardPublic(completed[0]._id);
+          const innings = score.data?.innings || [];
+          const batRows = innings.flatMap((i) => i.battingCard || []);
+          const bowlRows = innings.flatMap((i) => i.bowlingCard || []);
+          const topScorer = [...batRows].sort((a, b) => (b.runs || 0) - (a.runs || 0))[0] || null;
+          const bestBowler = [...bowlRows].sort((a, b) => (b.wickets || 0) - (a.wickets || 0) || (a.runs || 0) - (b.runs || 0))[0] || null;
+          setRecentResultMeta({ topScorer, bestBowler });
+        } else {
+          setRecentResultMeta(null);
+        }
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
       } finally {
@@ -51,8 +75,26 @@ export const Dashboard = () => {
       }
     };
 
-    fetchDashboardData();
-  }, [isCaptain, user]);
+    fetchDashboard();
+  }, [user?.name]);
+
+  const liveMatch = liveMatches[0] || null;
+  const upcoming = upcomingMatches
+    .filter(m => m.status !== 'live')
+    .sort((a, b) => new Date(a.date) - new Date(b.date))[0] || null;
+  const lastCompleted = completedMatches[0] || null;
+  const topRuns5 = (leaderboard.topRuns || []).slice(0, 5);
+  const topWickets5 = (leaderboard.topWickets || []).slice(0, 5);
+
+  const myCard = useMemo(() => {
+    if (!myCareer) return null;
+    const c = myCareer.careerStats || {};
+    const outs = Math.max(1, (myCareer.matchHistory || []).length - (myCareer.matchHistory || []).filter(m => m.notOut).length);
+    const avg = (Number(c.totalRuns || 0) / outs).toFixed(2);
+    const sr = Number(c.totalBallsFaced || 0) > 0 ? ((Number(c.totalRuns || 0) * 100) / Number(c.totalBallsFaced || 1)).toFixed(2) : '0.00';
+    const last5 = [...(myCareer.matchHistory || [])].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 5);
+    return { c, avg, sr, last5 };
+  }, [myCareer]);
 
   if (loading) {
     return (
@@ -62,253 +104,126 @@ export const Dashboard = () => {
     );
   }
 
-  // Admin Dashboard
-  if (isAdmin()) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
-            <p className="text-gray-400">Overview of your auction platform</p>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatCard
-              Icon={Users}
-              label="Total Players"
-              value={stats?.totalPlayers || 0}
-              color="neon-green"
-            />
-            <StatCard
-              Icon={Trophy}
-              label="Sold Players"
-              value={stats?.soldPlayers || 0}
-              color="gold"
-            />
-            <StatCard
-              Icon={DollarSign}
-              label="Money Spent"
-              value={`₹${(stats?.totalMoneySpent || 0).toLocaleString()}`}
-              color="neon-blue"
-            />
-            <StatCard
-              Icon={Activity}
-              label="Unsold Players"
-              value={stats?.unsoldPlayers || 0}
-              color="purple"
-            />
-          </div>
-
-          {/* Quick Actions */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <QuickActionCard
-              Icon={Gavel}
-              title="Start Auction"
-              description="Begin a new player auction"
-              to="/auction"
-              color="neon-green"
-            />
-            <QuickActionCard
-              Icon={Users}
-              title="Manage Players"
-              description="Add or edit player profiles"
-              to="/admin/players"
-              color="gold"
-            />
-            <QuickActionCard
-              Icon={Calendar}
-              title="Schedule Matches"
-              description="Create upcoming fixtures"
-              to="/matches"
-              color="neon-blue"
-            />
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Captain Dashboard
-  if (isCaptain()) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">Captain Dashboard</h1>
-            <p className="text-gray-400">Manage your team and bidding</p>
-          </div>
-
-          {/* Team Budget Card */}
-          {team && (
-            <div className="sports-card mb-8">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-4">
-                  <div 
-                    className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl font-bold"
-                    style={{ backgroundColor: team.color }}
-                  >
-                    {team.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-white">{team.name}</h2>
-                    <p className="text-gray-400">Your Team</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-400">Remaining Budget</p>
-                  <p className="text-3xl font-bold gradient-text-gold">
-                    ₹{team.remainingBudget.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Budget Bar */}
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-400">Budget Used</span>
-                  <span className="text-white">
-                    {Math.round(((team.totalBudget - team.remainingBudget) / team.totalBudget) * 100)}%
-                  </span>
-                </div>
-                <div className="h-3 bg-sports-border rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${((team.totalBudget - team.remainingBudget) / team.totalBudget) * 100}%` }}
-                    className="h-full bg-gradient-to-r from-neon-green to-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="p-4 rounded-lg bg-sports-border/30">
-                  <p className="text-2xl font-bold text-white">{team.players?.length || 0}</p>
-                  <p className="text-sm text-gray-400">Players</p>
-                </div>
-                <div className="p-4 rounded-lg bg-sports-border/30">
-                  <p className="text-2xl font-bold text-white">
-                    ₹{(team.totalBudget - team.remainingBudget).toLocaleString()}
-                  </p>
-                  <p className="text-sm text-gray-400">Spent</p>
-                </div>
-                <div className="p-4 rounded-lg bg-sports-border/30">
-                  <p className="text-2xl font-bold text-white">
-                    ₹{team.totalBudget.toLocaleString()}
-                  </p>
-                  <p className="text-sm text-gray-400">Total</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Actions */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <QuickActionCard
-              Icon={Gavel}
-              title="Join Auction"
-              description="Bid on available players"
-              to="/auction"
-              color="neon-green"
-            />
-            <QuickActionCard
-              Icon={Calendar}
-              title="Upcoming Matches"
-              description={`${upcomingMatches.length} matches scheduled`}
-              to="/matches"
-              color="neon-blue"
-            />
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Viewer Dashboard
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome, {user?.name}</h1>
-          <p className="text-gray-400">View auctions and matches</p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
+        <p className="text-gray-400">Match, form, and career overview</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="sports-card lg:col-span-2">
+          <h2 className="text-white font-semibold mb-3">Live / Upcoming Match</h2>
+          {liveMatch ? (
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <span className="inline-flex items-center gap-2 text-red-400 font-semibold">🔴 LIVE</span>
+                <p className="text-white mt-1">
+                  {(liveMatch.teamA?.name || 'Team A')} vs {(liveMatch.teamB?.name || 'Team B')}
+                </p>
+                <p className="text-sm text-gray-300 mt-1">
+                  {(liveScorePreview?.[0]?.totals ? `${liveScorePreview[0].totals.runs}/${liveScorePreview[0].totals.wickets}` : '-')}
+                  {'  '}|{'  '}
+                  {(liveScorePreview?.[1]?.totals ? `${liveScorePreview[1].totals.runs}/${liveScorePreview[1].totals.wickets}` : '-')}
+                </p>
+              </div>
+              <Link to={`/matches/${liveMatch._id}/live`} className="px-4 py-2 rounded-lg bg-neon-green text-sports-darker font-semibold w-fit">Watch Live</Link>
+            </div>
+          ) : upcoming ? (
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <p className="text-white">{new Date(upcoming.date).toLocaleDateString()} • {upcoming.venue || upcoming.location}</p>
+                <p className="text-sm text-gray-400 capitalize mt-1">{upcoming.status?.replace('_', ' ')}</p>
+              </div>
+              <Link to={`/matches/${upcoming._id}?tab=setup`} className="px-4 py-2 rounded-lg bg-neon-blue text-sports-darker font-semibold w-fit">View Match</Link>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-gray-400">No upcoming matches</p>
+              {isAdmin() && <Link to="/admin/matches" className="px-4 py-2 rounded-lg bg-gold text-sports-darker font-semibold">Create one</Link>}
+            </div>
+          )}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <QuickActionCard
-            Icon={Gavel}
-            title="Live Auction"
-            description="Watch the auction in real-time"
-            to="/auction"
-            color="neon-green"
-          />
-          <QuickActionCard
-            Icon={Trophy}
-            title="View Teams"
-            description="See all team compositions"
-            to="/teams"
-            color="gold"
-          />
+        <div className="sports-card">
+          <h2 className="text-white font-semibold mb-3">Recent Result</h2>
+          {lastCompleted ? (
+            <div className="space-y-2">
+              <p className="text-white">Winner: {lastCompleted.result?.winner?.name || 'TBD'}</p>
+              <p className="text-gray-300 text-sm capitalize">
+                Margin: {lastCompleted.result?.marginType === 'tie' ? 'Tie' : `${lastCompleted.result?.margin || 0} ${lastCompleted.result?.marginType || ''}`}
+              </p>
+              <p className="text-gray-300 text-sm">
+                Top scorer: {recentResultMeta?.topScorer?.batsmanName || '-'} ({recentResultMeta?.topScorer?.runs || 0})
+              </p>
+              <p className="text-gray-300 text-sm">
+                Best bowler: {recentResultMeta?.bestBowler?.bowlerName || '-'} ({recentResultMeta?.bestBowler?.wickets || 0}/{recentResultMeta?.bestBowler?.runs || 0})
+              </p>
+              <Link to={`/matches/${lastCompleted._id}/live`} className="inline-flex text-neon-green hover:underline">Full Scorecard</Link>
+            </div>
+          ) : (
+            <p className="text-gray-400">No completed matches yet.</p>
+          )}
         </div>
-      </motion.div>
+
+        <div className="sports-card">
+          <h2 className="text-white font-semibold mb-3">All-Time Leaderboard</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-400 mb-2">Top Runs</p>
+              <div className="space-y-1">
+                {topRuns5.map((p, i) => (
+                  <div key={p._id} className="text-sm flex justify-between text-gray-200">
+                    <span>{i + 1}. {p.nickname || p.name}</span>
+                    <span>{p.careerStats?.totalRuns || 0} ({p.careerStats?.highScore || 0})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-2">Top Wickets</p>
+              <div className="space-y-1">
+                {topWickets5.map((p, i) => (
+                  <div key={p._id} className="text-sm flex justify-between text-gray-200">
+                    <span>{i + 1}. {p.nickname || p.name}</span>
+                    <span>{p.careerStats?.totalWickets || 0} ({p.careerStats?.bestBowlingWickets || 0}/{p.careerStats?.bestBowlingRuns || 0})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <Link to="/players" className="inline-flex mt-3 text-neon-green hover:underline">View All</Link>
+        </div>
+
+        {myCard && (
+          <div className="sports-card">
+            <h2 className="text-white font-semibold mb-3">My Stats</h2>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+              <Stat label="Runs" value={myCard.c.totalRuns || 0} />
+              <Stat label="Wickets" value={myCard.c.totalWickets || 0} />
+              <Stat label="Matches" value={myCard.c.matchesPlayed || 0} />
+              <Stat label="Average" value={myCard.avg} />
+              <Stat label="Strike Rate" value={myCard.sr} />
+            </div>
+            <div className="flex items-center gap-2">
+              {myCard.last5.map((m, idx) => {
+                const good = (m.runs || 0) >= 20 || (m.wickets || 0) > 0;
+                return <span key={idx} title={`${m.runs || 0} runs, ${m.wickets || 0} wkts`} className={`w-3 h-3 rounded-full ${good ? 'bg-neon-green' : 'bg-red-500'}`} />;
+              })}
+            </div>
+            <Link to={`/players/${myCareer._id}`} className="inline-flex mt-3 text-neon-green hover:underline">Open My Profile</Link>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
-// Helper Components
-// eslint-disable-next-line no-unused-vars
-const StatCard = ({ Icon, label, value, color }) => {
-  const colorClasses = {
-    'neon-green': 'text-neon-green bg-neon-green/10',
-    'gold': 'text-gold bg-gold/10',
-    'neon-blue': 'text-neon-blue bg-neon-blue/10',
-    'purple': 'text-purple-400 bg-purple-400/10'
-  };
-
+const Stat = ({ label, value }) => {
   return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      className="sports-card"
-    >
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${colorClasses[color]}`}>
-        <Icon className="w-6 h-6" />
-      </div>
-      <p className="text-gray-400 text-sm mb-1">{label}</p>
-      <p className="text-2xl font-bold text-white">{value}</p>
-    </motion.div>
-  );
-};
-
-// eslint-disable-next-line no-unused-vars
-const QuickActionCard = ({ Icon, title, description, to, color }) => {
-  const colorClasses = {
-    'neon-green': 'group-hover:text-neon-green group-hover:bg-neon-green/10',
-    'gold': 'group-hover:text-gold group-hover:bg-gold/10',
-    'neon-blue': 'group-hover:text-neon-blue group-hover:bg-neon-blue/10'
-  };
-
-  return (
-    <Link to={to} className="group">
-      <motion.div
-        whileHover={{ y: -4 }}
-        className="sports-card card-hover"
-      >
-        <div className="flex items-start justify-between">
-          <div className={`w-12 h-12 rounded-xl bg-sports-border flex items-center justify-center transition-colors ${colorClasses[color]}`}>
-            <Icon className="w-6 h-6 text-gray-400 transition-colors" />
-          </div>
-          <ArrowRight className="w-5 h-5 text-gray-500 group-hover:text-white transition-colors" />
-        </div>
-        <h3 className="text-lg font-semibold text-white mt-4 mb-1">{title}</h3>
-        <p className="text-gray-400 text-sm">{description}</p>
-      </motion.div>
-    </Link>
+    <div className="p-3 rounded-lg bg-sports-border/30">
+      <p className="text-xs text-gray-400">{label}</p>
+      <p className="text-lg font-semibold text-white">{value}</p>
+    </div>
   );
 };

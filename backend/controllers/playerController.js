@@ -322,7 +322,9 @@ export const bulkCreatePlayers = asyncHandler(async (req, res) => {
 export const getPlayerCareer = asyncHandler(async (req, res) => {
   const player = await Player.findById(req.params.id)
     .populate('matchHistory.matchId', 'date venue location')
-    .select('name nickname role battingStyle bowlingStyle careerStats matchHistory');
+    .populate('auctionHistory.matchId', 'date venue location')
+    .populate('auctionHistory.teamId', 'name')
+    .select('name nickname role battingStyle bowlingStyle careerStats matchHistory auctionHistory');
 
   if (!player) {
     throw new AppError('Player not found', 404);
@@ -338,12 +340,12 @@ export const getLeaderboard = asyncHandler(async (req, res) => {
   const topRuns = await Player.find({ isActive: true })
     .sort({ 'careerStats.totalRuns': -1, 'careerStats.matchesPlayed': 1, name: 1 })
     .limit(10)
-    .select('name nickname role careerStats.totalRuns careerStats.matchesPlayed');
+    .select('name nickname role careerStats.totalRuns careerStats.matchesPlayed careerStats.highScore');
 
   const topWickets = await Player.find({ isActive: true })
     .sort({ 'careerStats.totalWickets': -1, 'careerStats.matchesPlayed': 1, name: 1 })
     .limit(10)
-    .select('name nickname role careerStats.totalWickets careerStats.matchesPlayed');
+    .select('name nickname role careerStats.totalWickets careerStats.matchesPlayed careerStats.bestBowlingWickets careerStats.bestBowlingRuns');
 
   res.json({
     success: true,

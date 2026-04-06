@@ -12,7 +12,7 @@ import { ProtectedRoute } from './components/layout/ProtectedRoute.jsx';
 
 // Pages
 import { Matches as AdminMatches } from './pages/admin/Matches.jsx';
-import { Players } from './pages/admin/Players.jsx';
+import { Players as AdminPlayers } from './pages/admin/Players.jsx';
 import { Teams as AdminTeams } from './pages/admin/Teams.jsx';
 import { Users as AdminUsers } from './pages/admin/Users.jsx';
 import { Login } from './pages/auth/Login.jsx';
@@ -22,6 +22,8 @@ import { Landing } from './pages/Landing.jsx';
 import { LiveScoreboard } from './pages/LiveScoreboard.jsx';
 import { Matches } from './pages/Matches.jsx';
 import { MatchDetail } from './pages/MatchDetail.jsx';
+import { PlayerProfile } from './pages/PlayerProfile.jsx';
+import { Players } from './pages/Players.jsx';
 import { TeamDetails } from './pages/TeamDetails.jsx';
 import { Teams } from './pages/Teams.jsx';
 
@@ -80,6 +82,22 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/players"
+                  element={
+                    <ProtectedRoute>
+                      <Players />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/players/:id"
+                  element={
+                    <ProtectedRoute>
+                      <PlayerProfile />
+                    </ProtectedRoute>
+                  }
+                />
                 {/* Public live route */}
                 <Route path="/matches/:id/live" element={<LiveScoreboard />} />
 
@@ -88,7 +106,7 @@ function App() {
                   path="/admin/players"
                   element={
                     <ProtectedRoute allowedRoles={['admin']}>
-                      <Players />
+                      <AdminPlayers />
                     </ProtectedRoute>
                   }
                 />

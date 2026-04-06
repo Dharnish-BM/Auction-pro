@@ -2,7 +2,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     Calendar,
-    Gavel,
     LayoutDashboard,
     LogOut, Menu,
     Settings,
@@ -29,7 +28,7 @@ export const Navbar = () => {
 
   const navLinks = [
     { path: '/', label: 'Home', icon: Trophy, public: true },
-    { path: '/auction', label: 'Auction', icon: Gavel, auth: true },
+    { path: '/players', label: 'Players', icon: UserCircle, auth: true },
     { path: '/teams', label: 'Teams', icon: Users, auth: true },
     { path: '/matches', label: 'Matches', icon: Calendar, auth: true },
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, auth: true },

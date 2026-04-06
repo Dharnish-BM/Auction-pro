@@ -53,5 +53,23 @@ export const playerService = {
   getStatsSummary: async () => {
     const response = await api.get('/players/stats/summary');
     return response.data;
+  },
+
+  // Bulk create players (admin only)
+  bulkCreate: async (players) => {
+    const response = await api.post('/players/bulk', { players });
+    return response.data;
+  },
+
+  // Player career profile
+  getCareer: async (id) => {
+    const response = await api.get(`/players/${id}/career`);
+    return response.data;
+  },
+
+  // Leaderboard
+  getLeaderboard: async () => {
+    const response = await api.get('/players/leaderboard');
+    return response.data;
   }
 };
