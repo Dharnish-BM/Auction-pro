@@ -5,6 +5,7 @@ import LiveMatchState from '../models/LiveMatchState.js';
 import Player from '../models/Player.js';
 import Team from '../models/Team.js';
 import { emitToMatch } from '../sockets/scoreboardSocket.js';
+import { aggregateCareerStats } from '../utils/statsAggregator.js';
 
 const VALID_MATCH_STATUS_TRANSITIONS = new Map([
   ['setup', new Set(['auction'])],
@@ -1383,6 +1384,12 @@ async function endMatchInternal(matchId, chasingTeamIdOrNull) {
 
   await match.save();
   emitToMatch(match._id.toString(), 'match_completed', { result: match.result });
+
+  try {
+    await aggregateCareerStats(match._id);
+  } catch (error) {
+    console.error('Career stats aggregation failed:', error);
+  }
 }
 
 // @desc    Complete match (manual)

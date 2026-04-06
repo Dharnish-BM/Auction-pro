@@ -3,7 +3,9 @@ import {
     bulkCreatePlayers,
     createPlayer,
     deletePlayer,
+    getLeaderboard,
     getPlayer,
+    getPlayerCareer,
     getPlayers,
     getPlayerStatsSummary,
     markPlayerSold,
@@ -15,9 +17,13 @@ import { isAdmin, protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Public routes (protected)
+// Public routes
+router.get('/leaderboard', getLeaderboard);
+
+// Protected routes
 router.get('/', protect, getPlayers);
 router.get('/stats/summary', protect, getPlayerStatsSummary);
+router.get('/:id/career', protect, getPlayerCareer);
 router.get('/:id', protect, getPlayer);
 
 // Admin only routes

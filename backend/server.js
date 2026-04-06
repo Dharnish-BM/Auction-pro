@@ -13,6 +13,7 @@ import connectDB from './config/db.js';
 // Import routes
 import auctionRoutes from './routes/auctions.js';
 import authRoutes from './routes/auth.js';
+import adminRoutes from './routes/admin.js';
 import matchRoutes from './routes/matches.js';
 import playerRoutes from './routes/players.js';
 import teamRoutes from './routes/teams.js';
@@ -75,6 +76,7 @@ app.use('/api/teams', teamRoutes);
 app.use('/api/players', playerRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/matches', matchRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

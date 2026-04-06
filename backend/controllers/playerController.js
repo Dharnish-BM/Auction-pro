@@ -315,3 +315,41 @@ export const bulkCreatePlayers = asyncHandler(async (req, res) => {
     data: created
   });
 });
+
+// @desc    Get player career stats + match history
+// @route   GET /api/players/:id/career
+// @access  Private
+export const getPlayerCareer = asyncHandler(async (req, res) => {
+  const player = await Player.findById(req.params.id)
+    .populate('matchHistory.matchId', 'date venue location')
+    .select('name nickname role battingStyle bowlingStyle careerStats matchHistory');
+
+  if (!player) {
+    throw new AppError('Player not found', 404);
+  }
+
+  res.json({ success: true, data: player });
+});
+
+// @desc    Leaderboards (top runs / wickets)
+// @route   GET /api/players/leaderboard
+// @access  Public
+export const getLeaderboard = asyncHandler(async (req, res) => {
+  const topRuns = await Player.find({ isActive: true })
+    .sort({ 'careerStats.totalRuns': -1, 'careerStats.matchesPlayed': 1, name: 1 })
+    .limit(10)
+    .select('name nickname role careerStats.totalRuns careerStats.matchesPlayed');
+
+  const topWickets = await Player.find({ isActive: true })
+    .sort({ 'careerStats.totalWickets': -1, 'careerStats.matchesPlayed': 1, name: 1 })
+    .limit(10)
+    .select('name nickname role careerStats.totalWickets careerStats.matchesPlayed');
+
+  res.json({
+    success: true,
+    data: {
+      topRuns,
+      topWickets
+    }
+  });
+});
