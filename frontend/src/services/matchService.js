@@ -1,4 +1,11 @@
 import api from './api.js';
+import axios from 'axios';
+
+const PUBLIC_API_URL = import.meta.env.VITE_API_URL || '/api';
+const publicApi = axios.create({
+  baseURL: PUBLIC_API_URL,
+  headers: { 'Content-Type': 'application/json' }
+});
 
 export const matchService = {
   // Get all matches
@@ -10,6 +17,37 @@ export const matchService = {
   // Get single match
   getById: async (id) => {
     const response = await api.get(`/matches/${id}`);
+    return response.data;
+  },
+
+  getOverview: async (id) => {
+    const response = await api.get(`/matches/${id}/overview`);
+    return response.data;
+  },
+
+  getPool: async (id) => {
+    const response = await api.get(`/matches/${id}/pool`);
+    return response.data;
+  },
+
+  setPool: async (id, playerIds) => {
+    const response = await api.post(`/matches/${id}/pool`, { playerIds });
+    return response.data;
+  },
+
+  createAuction: async (matchId, config) => {
+    const response = await api.post(`/matches/${matchId}/auction`, config);
+    return response.data;
+  },
+
+  // Public live endpoints (no auth)
+  getLivePublic: async (id) => {
+    const response = await publicApi.get(`/matches/${id}/live`);
+    return response.data;
+  },
+
+  getScorecardPublic: async (id) => {
+    const response = await publicApi.get(`/matches/${id}/scorecard`);
     return response.data;
   },
 

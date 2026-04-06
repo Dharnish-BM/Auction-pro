@@ -5,9 +5,11 @@ import { Calendar, ChevronRight, Clock, MapPin, Trophy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SkeletonCard } from '../components/common/Loader.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { matchService } from '../services/matchService.js';
 
 export const Matches = () => {
+  const { isAdmin } = useAuth();
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -28,12 +30,16 @@ export const Matches = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
+      case 'setup':
+        return 'text-gray-300 bg-gray-300/10';
+      case 'auction':
+        return 'text-orange-400 bg-orange-400/10';
       case 'live':
-        return 'text-red-400 bg-red-400/10';
-      case 'upcoming':
         return 'text-neon-green bg-neon-green/10';
+      case 'innings_break':
+        return 'text-gold bg-gold/10';
       case 'completed':
-        return 'text-gray-400 bg-gray-400/10';
+        return 'text-neon-blue bg-neon-blue/10';
       default:
         return 'text-gray-400 bg-gray-400/10';
     }
@@ -54,9 +60,19 @@ export const Matches = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Matches</h1>
-        <p className="text-gray-400">View all scheduled fixtures</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Matches</h1>
+          <p className="text-gray-400">View all scheduled fixtures</p>
+        </div>
+        {isAdmin() && (
+          <Link
+            to="/admin/matches"
+            className="px-5 py-2 rounded-lg bg-neon-green text-sports-darker font-semibold hover:shadow-neon transition-all"
+          >
+            New Match
+          </Link>
+        )}
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -67,18 +83,18 @@ export const Matches = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
           >
-            <Link to={match.status === 'live' ? `/matches/${match._id}/scoreboard` : '#'}>
+            <Link to={`/matches/${match._id}?tab=setup`}>
               <div className="sports-card card-hover group">
                 {/* Status Badge */}
                 <div className="flex justify-between items-start mb-4">
                   <span className={`px-3 py-1 rounded-full text-sm font-medium capitalize ${getStatusColor(match.status)}`}>
                     {match.status === 'live' && (
                       <span className="flex items-center">
-                        <span className="w-2 h-2 bg-red-400 rounded-full mr-2 animate-pulse" />
+                        <span className="w-2 h-2 bg-neon-green rounded-full mr-2 animate-pulse" />
                         Live
                       </span>
                     )}
-                    {match.status !== 'live' && match.status}
+                    {match.status !== 'live' && match.status.replace('_', ' ')}
                   </span>
                   {match.status === 'live' && (
                     <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-white transition-colors" />

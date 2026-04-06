@@ -8,14 +8,14 @@ import { matchService } from '../services/matchService.js';
 
 export const LiveScoreboard = () => {
   const { id } = useParams();
-  const [match, setMatch] = useState(null);
+  const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchMatch = async () => {
       try {
-        const response = await matchService.getById(id);
-        setMatch(response.data);
+        const response = await matchService.getLivePublic(id);
+        setPayload(response.data);
       } catch (error) {
         console.error('Failed to fetch match:', error);
       } finally {
@@ -34,7 +34,7 @@ export const LiveScoreboard = () => {
     );
   }
 
-  if (!match) {
+  if (!payload) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <p className="text-gray-400">Match not found</p>
@@ -42,9 +42,9 @@ export const LiveScoreboard = () => {
     );
   }
 
-  const isTeamABatting = match.data.scorecard.currentInnings === 'teamA';
-  const battingTeam = isTeamABatting ? match.data.teamA : match.data.teamB;
-  const battingScore = isTeamABatting ? match.data.scorecard.teamAScore : match.data.scorecard.teamBScore;
+  const match = payload.match;
+  const liveState = payload.liveState;
+  const inningsSummary = payload.inningsSummary;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -54,240 +54,77 @@ export const LiveScoreboard = () => {
         Back to Matches
       </Link>
 
-      {/* Match Header */}
+      {/* Match Header (minimal public view) */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="sports-card mb-8"
       >
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-4">
-            <div 
-              className="w-12 h-12 rounded-xl flex items-center justify-center font-bold"
-              style={{ backgroundColor: match.data.teamA.color }}
-            >
-              {match.data.teamA.name.charAt(0)}
+          <div>
+            <p className="text-white font-bold text-xl">Live Score</p>
+            <p className="text-gray-400 text-sm capitalize">Status: {match.status?.replace('_', ' ')}</p>
+          </div>
+          {match.status === 'live' && (
+            <div className="flex items-center">
+              <span className="w-2 h-2 bg-neon-green rounded-full animate-pulse mr-2" />
+              <span className="text-neon-green text-sm font-semibold">LIVE</span>
             </div>
-            <span className="text-xl font-bold text-white">{match.data.teamA.name}</span>
-          </div>
-          
-          <div className="text-center">
-            <span className="text-gray-500 font-bold text-lg">VS</span>
-            {match.data.status === 'live' && (
-              <div className="flex items-center justify-center mt-1">
-                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-2" />
-                <span className="text-red-400 text-sm">LIVE</span>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <span className="text-xl font-bold text-white">{match.data.teamB.name}</span>
-            <div 
-              className="w-12 h-12 rounded-xl flex items-center justify-center font-bold"
-              style={{ backgroundColor: match.data.teamB.color }}
-            >
-              {match.data.teamB.name.charAt(0)}
-            </div>
-          </div>
+          )}
         </div>
-
-        {/* Location & Date */}
-        <div className="text-center text-gray-400 text-sm">
-          <p>{match.data.location}</p>
-          <p>{new Date(match.data.date).toLocaleDateString()} • {match.data.time}</p>
+        <div className="text-gray-400 text-sm">
+          <p>{match.venue || match.location}</p>
         </div>
       </motion.div>
 
-      {/* Main Scoreboard */}
+      {/* Main Scoreboard (minimal) */}
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Score Card */}
-        <div className="lg:col-span-2 space-y-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="sports-card"
-          >
-            {/* Batting Team */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <div 
-                  className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl font-bold"
-                  style={{ backgroundColor: battingTeam.color }}
-                >
-                  {battingTeam.name.charAt(0)}
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Batting</p>
-                  <h2 className="text-2xl font-bold text-white">{battingTeam.name}</h2>
-                </div>
+        <div className="lg:col-span-2 sports-card">
+          <h3 className="text-lg font-semibold text-white mb-4">Innings Summary</h3>
+          {inningsSummary ? (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-4 rounded-lg bg-sports-border/30">
+                <p className="text-gray-400 text-sm">Score</p>
+                <p className="text-white text-2xl font-bold">
+                  {inningsSummary.totalRuns}/{inningsSummary.totalWickets}
+                </p>
               </div>
-              <div className="text-right">
-                <p className="text-5xl font-bold text-white">
-                  {battingScore.runs}/{battingScore.wickets}
-                </p>
-                <p className="text-gray-400">
-                  {battingScore.overs}.{battingScore.balls} overs
-                </p>
+              <div className="p-4 rounded-lg bg-sports-border/30">
+                <p className="text-gray-400 text-sm">Balls</p>
+                <p className="text-white text-2xl font-bold">{inningsSummary.totalBalls}</p>
+              </div>
+              <div className="p-4 rounded-lg bg-sports-border/30">
+                <p className="text-gray-400 text-sm">Target</p>
+                <p className="text-white text-2xl font-bold">{inningsSummary.target || '-'}</p>
               </div>
             </div>
-
-            {/* Run Rate */}
-            <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-sports-border/50">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-neon-green">
-                  {match.data.derivedStats?.teamARunRate || '0.00'}
-                </p>
-                <p className="text-xs text-gray-400">Run Rate</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-gold">
-                  {match.data.derivedStats?.requiredRunRate || '-'}
-                </p>
-                <p className="text-xs text-gray-400">Required RR</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white">
-                  {match.data.scorecard.extras?.total || 0}
-                </p>
-                <p className="text-xs text-gray-400">Extras</p>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Batsmen */}
-          <div className="sports-card">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <Target className="w-5 h-5 mr-2 text-neon-green" />
-              Batsmen
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-gray-400 text-sm">
-                    <th className="pb-3">Batsman</th>
-                    <th className="pb-3 text-right">R</th>
-                    <th className="pb-3 text-right">B</th>
-                    <th className="pb-3 text-right">4s</th>
-                    <th className="pb-3 text-right">6s</th>
-                    <th className="pb-3 text-right">SR</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {match.data.scorecard.currentBatsmen?.map((batsman, index) => (
-                    <tr key={index} className="border-t border-sports-border/50">
-                      <td className="py-3">
-                        <div className="flex items-center">
-                          <span className="text-white font-medium">{batsman.name}</span>
-                          {batsman.isOnStrike && (
-                            <span className="ml-2 px-2 py-0.5 text-xs bg-neon-green/20 text-neon-green rounded">
-                              Strike
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 text-right text-white font-bold">{batsman.runs}</td>
-                      <td className="py-3 text-right text-gray-400">{batsman.balls}</td>
-                      <td className="py-3 text-right text-gray-400">{batsman.fours}</td>
-                      <td className="py-3 text-right text-gray-400">{batsman.sixes}</td>
-                      <td className="py-3 text-right text-neon-green">
-                        {batsman.balls > 0 ? ((batsman.runs / batsman.balls) * 100).toFixed(1) : '0.0'}
-                      </td>
-                    </tr>
-                  )) || (
-                    <tr>
-                      <td colSpan="6" className="py-4 text-center text-gray-500">
-                        No batsmen data
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Bowler */}
-          {match.data.scorecard.currentBowler && (
-            <div className="sports-card">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                <Activity className="w-5 h-5 mr-2 text-neon-blue" />
-                Current Bowler
-              </h3>
-              <div className="grid grid-cols-5 gap-4">
-                <div>
-                  <p className="text-white font-medium">{match.data.scorecard.currentBowler.name}</p>
-                  <p className="text-xs text-gray-400">Bowler</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold text-white">
-                    {match.data.scorecard.currentBowler.overs}.{match.data.scorecard.currentBowler.balls}
-                  </p>
-                  <p className="text-xs text-gray-400">Overs</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold text-white">{match.data.scorecard.currentBowler.runs}</p>
-                  <p className="text-xs text-gray-400">Runs</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold text-neon-green">{match.data.scorecard.currentBowler.wickets}</p>
-                  <p className="text-xs text-gray-400">Wickets</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold text-gold">
-                    {match.data.scorecard.currentBowler.overs > 0 
-                      ? (match.data.scorecard.currentBowler.runs / match.data.scorecard.currentBowler.overs).toFixed(1)
-                      : '0.0'}
-                  </p>
-                  <p className="text-xs text-gray-400">Economy</p>
-                </div>
-              </div>
-            </div>
+          ) : (
+            <p className="text-gray-400">No innings has started yet.</p>
           )}
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6">
-          {/* Match Info */}
           <div className="sports-card">
-            <h3 className="text-lg font-semibold text-white mb-4">Match Info</h3>
+            <h3 className="text-lg font-semibold text-white mb-4">Live State</h3>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-400">Status</span>
-                <span className="text-white capitalize">{match.data.status}</span>
+                <span className="text-gray-400">Striker</span>
+                <span className="text-white">{liveState?.strikerName || '-'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Overs</span>
-                <span className="text-white">{match.data.oversPerInnings}</span>
+                <span className="text-gray-400">Non-striker</span>
+                <span className="text-white">{liveState?.nonStrikerName || '-'}</span>
               </div>
-              {match.data.tossWinner && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Toss</span>
-                  <span className="text-white">{match.data.tossWinner.name}</span>
-                </div>
-              )}
-              {match.data.scorecard.target && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Target</span>
-                  <span className="text-gold">{match.data.scorecard.target}</span>
-                </div>
-              )}
+              <div className="flex justify-between">
+                <span className="text-gray-400">Bowler</span>
+                <span className="text-white">{liveState?.currentBowlerName || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Last 6</span>
+                <span className="text-white">{(liveState?.lastSixBalls || []).join(' ') || '-'}</span>
+              </div>
             </div>
           </div>
-
-          {/* Fall of Wickets */}
-          {match.data.scorecard.fallOfWickets?.length > 0 && (
-            <div className="sports-card">
-              <h3 className="text-lg font-semibold text-white mb-4">Fall of Wickets</h3>
-              <div className="space-y-2">
-                {match.data.scorecard.fallOfWickets.map((fow, index) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <span className="text-gray-400">{fow.wicket}. {fow.batsman}</span>
-                    <span className="text-white">{fow.runs} ({fow.over})</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

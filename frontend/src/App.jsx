@@ -15,13 +15,13 @@ import { Matches as AdminMatches } from './pages/admin/Matches.jsx';
 import { Players } from './pages/admin/Players.jsx';
 import { Teams as AdminTeams } from './pages/admin/Teams.jsx';
 import { Users as AdminUsers } from './pages/admin/Users.jsx';
-import { AuctionRoom } from './pages/AuctionRoom.jsx';
 import { Login } from './pages/auth/Login.jsx';
 import { Register } from './pages/auth/Register.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { Landing } from './pages/Landing.jsx';
 import { LiveScoreboard } from './pages/LiveScoreboard.jsx';
 import { Matches } from './pages/Matches.jsx';
+import { MatchDetail } from './pages/MatchDetail.jsx';
 import { TeamDetails } from './pages/TeamDetails.jsx';
 import { Teams } from './pages/Teams.jsx';
 
@@ -45,14 +45,6 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <Dashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/auction"
-                  element={
-                    <ProtectedRoute>
-                      <AuctionRoom />
                     </ProtectedRoute>
                   }
                 />
@@ -81,13 +73,15 @@ function App() {
                   }
                 />
                 <Route
-                  path="/matches/:id/scoreboard"
+                  path="/matches/:id"
                   element={
                     <ProtectedRoute>
-                      <LiveScoreboard />
+                      <MatchDetail />
                     </ProtectedRoute>
                   }
                 />
+                {/* Public live route */}
+                <Route path="/matches/:id/live" element={<LiveScoreboard />} />
 
                 {/* Admin Only Routes */}
                 <Route
