@@ -1,21 +1,13 @@
 import api from './api.js';
 
 export const auctionService = {
-  // Get all auctions
-  getAll: async () => {
-    const response = await api.get('/auctions');
+  getState: async (id) => {
+    const response = await api.get(`/auctions/${id}/state`);
     return response.data;
   },
 
-  // Get current active auction
-  getCurrent: async () => {
-    const response = await api.get('/auctions/current');
-    return response.data;
-  },
-
-  // Start auction (admin only)
-  start: async (data) => {
-    const response = await api.post('/auctions/start', data);
+  start: async (id) => {
+    const response = await api.post(`/auctions/${id}/start`);
     return response.data;
   },
 
@@ -25,21 +17,23 @@ export const auctionService = {
     return response.data;
   },
 
-  // End auction (admin only)
-  end: async (id) => {
-    const response = await api.post(`/auctions/${id}/end`);
+  pause: async (id) => {
+    const response = await api.post(`/auctions/${id}/pause`);
     return response.data;
   },
 
-  // Get auction history
-  getHistory: async () => {
-    const response = await api.get('/auctions/history');
+  override: async (id, teamId, amount) => {
+    const response = await api.post(`/auctions/${id}/override`, { teamId, amount });
     return response.data;
   },
 
-  // Reset all auctions (admin only)
-  reset: async () => {
-    const response = await api.post('/auctions/reset');
+  skip: async (id) => {
+    const response = await api.post(`/auctions/${id}/skip`);
+    return response.data;
+  },
+
+  sellNow: async (id) => {
+    const response = await api.post(`/auctions/${id}/sell-now`);
     return response.data;
   }
 };

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Loader } from '../components/common/Loader.jsx';
+import { AuctionRoom } from '../components/AuctionRoom.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { matchService } from '../services/matchService.js';
 
@@ -283,18 +284,22 @@ export const MatchDetail = () => {
       )}
 
       {activeTab === 'auction' && (
-        <div className="sports-card">
+        <div className="space-y-6">
           {matchStatus === 'setup' && <p className="text-gray-400">Auction not started yet.</p>}
           {matchStatus === 'auction_done' && (
-            <div>
+            <div className="sports-card">
               <h2 className="text-lg font-semibold text-white mb-3">Auction Summary</h2>
               <p className="text-gray-400 text-sm">Summary UI will be improved in Prompt 7.</p>
             </div>
           )}
           {matchStatus === 'auction' && (
-            <p className="text-gray-400">
-              Auction in progress. AuctionRoom integration lands in Prompt 7.
-            </p>
+            <div className="space-y-4">
+              {overview.auction?._id ? (
+                <AuctionRoom auctionId={overview.auction._id} />
+              ) : (
+                <p className="text-gray-400">Loading auction…</p>
+              )}
+            </div>
           )}
         </div>
       )}

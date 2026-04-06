@@ -144,6 +144,26 @@ export const startAuction = asyncHandler(async (req, res) => {
     throw new AppError("Auction status must be 'pending' or 'paused'", 400);
   }
 
+  // Resume if paused and a current player is already set
+  if (auction.status === 'paused' && auction.currentPlayer) {
+    auction.status = 'active';
+    auction.timeRemaining = auction.config.timerSeconds;
+    await auction.save();
+
+    const endsAt = startAuctionTimer(auction._id.toString(), auction.config.timerSeconds);
+    const populated = await Auction.findById(auction._id).populate('currentPlayer', 'name nickname role battingStyle bowlingStyle profilePhoto');
+
+    emitToAuction(auction._id.toString(), 'auction_resumed', {
+      auctionId: auction._id.toString(),
+      currentPlayer: populated.currentPlayer,
+      queueRemaining: populated.queue.length,
+      timerSeconds: auction.config.timerSeconds,
+      endsAt
+    });
+
+    return res.json({ success: true, data: populated });
+  }
+
   if (!auction.queue?.length) {
     throw new AppError('Auction queue is empty', 400);
   }
@@ -474,6 +494,27 @@ export const skipCurrentPlayer = asyncHandler(async (req, res) => {
   res.json({ success: true, data: state });
 });
 
+// @desc    Sell now (freeze bidding and advance with current highest bid)
+// @route   POST /api/auctions/:id/sell-now
+// @access  Private/Admin
+export const sellNow = asyncHandler(async (req, res) => {
+  const auction = await Auction.findById(req.params.id);
+  if (!auction) throw new AppError('Auction not found', 404);
+  if (auction.status !== 'active') throw new AppError('Auction is not active', 400);
+
+  clearAuctionTimer(auction._id.toString());
+  emitToAuction(auction._id.toString(), 'sell_now', { auctionId: auction._id.toString() });
+
+  if (auction.highestBidder && auction.highestBid > 0) {
+    await autoAdvancePlayer(auction._id.toString(), { teamId: auction.highestBidder, amount: auction.highestBid });
+  } else {
+    await autoAdvancePlayer(auction._id.toString(), null);
+  }
+
+  const state = await getAuctionStateInternal(auction._id.toString());
+  res.json({ success: true, data: state });
+});
+
 async function getAuctionStateInternal(auctionId) {
   const auction = await Auction.findById(auctionId)
     .populate('currentPlayer', 'name nickname role battingStyle bowlingStyle profilePhoto careerStats')
@@ -484,7 +525,11 @@ async function getAuctionStateInternal(auctionId) {
   const match = await Match.findById(auction.matchId);
   const teams = match ? await getMatchTeams(match) : [];
 
-  // Remaining count only; queue itself can be large.
+  const queuePreviewIds = (auction.queue || []).slice(0, 5);
+  const queuePreview = queuePreviewIds.length
+    ? await Player.find({ _id: { $in: queuePreviewIds } }).select('name nickname role battingStyle bowlingStyle')
+    : [];
+
   return {
     auctionId: auction._id,
     matchId: auction.matchId,
@@ -492,6 +537,7 @@ async function getAuctionStateInternal(auctionId) {
     config: auction.config,
     currentPlayer: auction.currentPlayer,
     queueRemaining: auction.queue?.length || 0,
+    queuePreview,
     unsoldPool: auction.unsoldPool || [],
     bids: auction.bids || [],
     highestBid: auction.highestBid,

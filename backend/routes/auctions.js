@@ -4,6 +4,7 @@ import {
     overrideBid,
     pauseAuction,
     placeBid,
+    sellNow,
     skipCurrentPlayer,
     startAuction
 } from '../controllers/auctionController.js';
@@ -22,5 +23,6 @@ router.post('/:id/start', protect, isAdmin, startAuction);
 router.post('/:id/pause', protect, isAdmin, pauseAuction);
 router.post('/:id/override', protect, isAdmin, overrideBid);
 router.post('/:id/skip', protect, isAdmin, skipCurrentPlayer);
+router.post('/:id/sell-now', protect, isAdmin, sellNow);
 
 export default router;

@@ -833,6 +833,11 @@ export const getMatchOverview = asyncHandler(async (req, res) => {
     throw new AppError('Match not found', 404);
   }
 
+  const activeAuction = await Auction.findOne({
+    matchId: match._id,
+    status: { $in: ['pending', 'active', 'paused', 'round2', 'closed'] }
+  }).select('_id status config currentPlayer queue unsoldPool highestBid highestBidder highestBidderName');
+
   // Auction summary (who got whom, for how much) for this match
   const auctionRows = await Auction.find({ matchId: match._id, status: { $in: ['closed', 'unsold', 'completed'] } })
     .populate('playerId', 'name nickname role battingStyle bowlingStyle')
@@ -898,6 +903,17 @@ export const getMatchOverview = asyncHandler(async (req, res) => {
       match,
       playerPool: match.playerPool,
       teams,
+      auction: activeAuction ? {
+        _id: activeAuction._id,
+        status: activeAuction.status,
+        config: activeAuction.config,
+        currentPlayer: activeAuction.currentPlayer,
+        queueRemaining: activeAuction.queue?.length || 0,
+        unsoldCount: activeAuction.unsoldPool?.length || 0,
+        highestBid: activeAuction.highestBid,
+        highestBidder: activeAuction.highestBidder,
+        highestBidderName: activeAuction.highestBidderName
+      } : null,
       auctionSummary,
       inningsSummaries: inningsSummaries.length ? inningsSummaries : legacyInningsSummaries,
       result: match.result || (match.winner ? { winner: match.winner } : null)
