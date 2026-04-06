@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { ChevronDown, ChevronUp, Pause, Play, SkipForward, UserCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -81,7 +81,7 @@ export const AuctionRoom = ({ auctionId }) => {
 
   const config = state?.config;
   const currentPlayer = state?.currentPlayer;
-  const teams = state?.teams || [];
+  const teams = useMemo(() => state?.teams || [], [state?.teams]);
 
   const myTeam = useMemo(() => {
     if (!user?._id) return null;
@@ -107,7 +107,7 @@ export const AuctionRoom = ({ auctionId }) => {
     return 'text-red-400';
   };
 
-  const fetchState = async () => {
+  const fetchState = useCallback(async () => {
     const res = await auctionService.getState(auctionId);
     const nextState = res.data;
     setState(nextState);
@@ -116,25 +116,25 @@ export const AuctionRoom = ({ auctionId }) => {
       setRemainingSeconds((prev) => (prev > 0 ? prev : nextState.config.timerSeconds));
     }
     return nextState;
-  };
+  }, [auctionId]);
 
-  const startPolling = () => {
+  const startPolling = useCallback(() => {
     if (pollRef.current) return;
     pollRef.current = setInterval(async () => {
       try {
         await fetchState();
-      } catch (_e) {
+      } catch {
         // ignore
       }
     }, 3000);
-  };
+  }, [fetchState]);
 
-  const stopPolling = () => {
+  const stopPolling = useCallback(() => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-  };
+  }, []);
 
   // initial load + connect socket
   useEffect(() => {
@@ -177,14 +177,14 @@ export const AuctionRoom = ({ auctionId }) => {
 
       socket.on('auction_started', (data) => {
         if (data?.auctionId !== auctionId) return;
-        setRemainingSeconds(data.timerSeconds ?? timerSeconds);
+        setRemainingSeconds(data.timerSeconds ?? 15);
         setBanner(null);
         fetchState().catch(() => {});
       });
 
       socket.on('auction_resumed', (data) => {
         if (data?.auctionId !== auctionId) return;
-        setRemainingSeconds(data.timerSeconds ?? timerSeconds);
+        setRemainingSeconds(data.timerSeconds ?? 15);
         setBanner(null);
         fetchState().catch(() => {});
       });
@@ -197,7 +197,7 @@ export const AuctionRoom = ({ auctionId }) => {
 
       socket.on('new_bid', (data) => {
         if (data?.auctionId !== auctionId) return;
-        setRemainingSeconds(data.timerSeconds ?? timerSeconds);
+        setRemainingSeconds(data.timerSeconds ?? 15);
         fetchState().catch(() => {});
       });
 
@@ -230,7 +230,7 @@ export const AuctionRoom = ({ auctionId }) => {
       socket.on('next_player', (data) => {
         if (data?.auctionId !== auctionId) return;
         setBanner(null);
-        setRemainingSeconds(data.timerSeconds ?? timerSeconds);
+        setRemainingSeconds(data.timerSeconds ?? 15);
         fetchState().catch(() => {});
       });
 
@@ -257,21 +257,19 @@ export const AuctionRoom = ({ auctionId }) => {
       if (s) {
         try {
           s.emit('leave-auction', { auctionId });
-        } catch (_e) {
+        } catch {
           // ignore
         }
         s.disconnect();
       }
       socketRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auctionId]);
+  }, [auctionId, fetchState, startPolling, stopPolling]);
 
   // keep bid input in sync
   useEffect(() => {
     const next = (currentBid > 0 ? currentBid + bidIncrement : effectiveBasePrice);
     setBidAmount(String(next));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentBid, bidIncrement, effectiveBasePrice, currentPlayer?._id]);
 
   const handlePlaceBid = async () => {
