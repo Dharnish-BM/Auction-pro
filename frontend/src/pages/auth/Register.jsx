@@ -11,8 +11,7 @@ export const Register = () => {
     name: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    role: 'viewer'
+    confirmPassword: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -118,24 +117,6 @@ export const Register = () => {
                   placeholder="Enter your email"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Role
-              </label>
-              <select
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-                className="w-full px-4 py-3 bg-sports-card border border-sports-border rounded-xl text-white focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green transition-all"
-              >
-                <option value="viewer">Viewer</option>
-                <option value="captain">Team Captain</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Select &quot;Team Captain&quot; if you want to bid in auctions
-              </p>
             </div>
 
             <div>

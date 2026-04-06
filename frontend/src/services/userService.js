@@ -1,6 +1,12 @@
 import api from './api.js';
 
 export const userService = {
+  // Create user (admin only)
+  create: async (data) => {
+    const response = await api.post('/users', data);
+    return response.data;
+  },
+
   // Get all users (admin only)
   getAll: async () => {
     const response = await api.get('/users');

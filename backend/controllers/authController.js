@@ -19,7 +19,7 @@ export const register = asyncHandler(async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { name, email, password, role } = req.body;
+  const { name, email, password } = req.body;
 
   // Check if user exists
   const userExists = await User.findOne({ email });
@@ -32,7 +32,7 @@ export const register = asyncHandler(async (req, res) => {
     name,
     email,
     password,
-    role: role || 'viewer'
+    role: 'viewer'
   });
 
   if (user) {

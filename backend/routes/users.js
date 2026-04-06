@@ -1,6 +1,7 @@
 import express from 'express';
 import {
     activateUser,
+    createUser,
     deactivateUser,
     deleteUser,
     getAvailableCaptains,
@@ -15,6 +16,7 @@ const router = express.Router();
 // All routes are protected and admin-only
 router.use(protect, isAdmin);
 
+router.post('/', createUser);
 router.get('/', getUsers);
 router.get('/captains/available', getAvailableCaptains);
 router.get('/:id', getUser);

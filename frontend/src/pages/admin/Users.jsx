@@ -15,7 +15,6 @@ import {
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Loader } from '../../components/common/Loader.jsx';
-import { authService } from '../../services/authService.js';
 import { userService } from '../../services/userService.js';
 
 export const Users = () => {
@@ -63,7 +62,7 @@ export const Users = () => {
         await userService.update(editingUser._id, updateData);
         toast.success('User updated successfully');
       } else {
-        await authService.register(formData);
+        await userService.create(formData);
         toast.success('User created successfully');
       }
       setShowAddModal(false);

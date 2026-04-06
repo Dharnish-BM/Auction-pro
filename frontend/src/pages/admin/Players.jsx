@@ -37,7 +37,7 @@ export const Players = () => {
   const roles = ['Batsman', 'Bowler', 'All-Rounder', 'Wicket-Keeper'];
   const battingStyles = ['Right-handed', 'Left-handed'];
   const bowlingStyles = [
-    'Right-arm Fast', 'Right-arm Medium', 'Right-arm Spin',
+    'Right-arm Fast', 'Right-arm Medium', 'Right-arm Off-spin', 'Right-arm Leg-spin',
     'Left-arm Fast', 'Left-arm Medium', 'Left-arm Spin'
   ];
 
