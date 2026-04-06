@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+    bulkCreatePlayers,
     createPlayer,
     deletePlayer,
     getPlayer,
@@ -20,6 +21,7 @@ router.get('/stats/summary', protect, getPlayerStatsSummary);
 router.get('/:id', protect, getPlayer);
 
 // Admin only routes
+router.post('/bulk', protect, isAdmin, bulkCreatePlayers);
 router.post('/', protect, isAdmin, createPlayer);
 router.put('/:id', protect, isAdmin, updatePlayer);
 router.delete('/:id', protect, isAdmin, deletePlayer);

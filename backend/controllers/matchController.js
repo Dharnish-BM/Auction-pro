@@ -1,6 +1,26 @@
 import { AppError, asyncHandler } from '../middleware/errorHandler.js';
 import Match from '../models/Match.js';
+import Auction from '../models/Auction.js';
+import LiveMatchState from '../models/LiveMatchState.js';
+import Player from '../models/Player.js';
 import Team from '../models/Team.js';
+
+const VALID_MATCH_STATUS_TRANSITIONS = new Map([
+  ['setup', new Set(['auction'])],
+  ['auction', new Set(['auction_done'])],
+  ['auction_done', new Set(['live'])],
+  ['live', new Set(['innings_break', 'completed'])],
+  ['innings_break', new Set(['live', 'completed'])],
+  ['completed', new Set([])]
+]);
+
+const assertValidTransition = (from, to) => {
+  const allowed = VALID_MATCH_STATUS_TRANSITIONS.get(from);
+  if (!allowed || !allowed.has(to)) {
+    const allowedList = allowed ? Array.from(allowed).join(', ') : '(none)';
+    throw new AppError(`Invalid status transition: ${from} → ${to}. Allowed: ${allowedList}`, 400);
+  }
+};
 
 // @desc    Get all matches
 // @route   GET /api/matches
@@ -92,7 +112,7 @@ export const createMatch = asyncHandler(async (req, res) => {
     ...(typeof overs === 'number' ? { overs } : {}),
     ...(format ? { format } : {}),
     ...(Array.isArray(playerPool) ? { playerPool } : {}),
-    status: 'upcoming'
+    status: 'setup'
   });
 
   const populatedMatch = await Match.findById(match._id)
@@ -426,7 +446,7 @@ export const getUpcomingMatches = asyncHandler(async (req, res) => {
   today.setHours(0, 0, 0, 0);
 
   const matches = await Match.find({
-    status: 'upcoming',
+    status: { $in: ['setup', 'upcoming'] },
     date: { $gte: today }
   })
     .populate('teamA', 'name logo color')
@@ -453,5 +473,254 @@ export const getLiveMatches = asyncHandler(async (req, res) => {
     success: true,
     count: matches.length,
     data: matches
+  });
+});
+
+// @desc    Set player pool for a match
+// @route   POST /api/matches/:id/pool
+// @access  Private/Admin
+export const setPlayerPool = asyncHandler(async (req, res) => {
+  const { playerIds } = req.body;
+  if (!Array.isArray(playerIds)) {
+    throw new AppError('playerIds must be an array', 400);
+  }
+
+  const match = await Match.findById(req.params.id);
+  if (!match) {
+    throw new AppError('Match not found', 404);
+  }
+
+  if (match.status !== 'setup') {
+    throw new AppError("Player pool can only be set when match status is 'setup'", 400);
+  }
+
+  const uniquePlayerIds = [...new Set(playerIds.map(String))];
+  const players = await Player.find({
+    _id: { $in: uniquePlayerIds },
+    isActive: true
+  }).select('_id');
+
+  if (players.length !== uniquePlayerIds.length) {
+    throw new AppError('One or more playerIds are invalid or inactive', 400);
+  }
+
+  match.playerPool = uniquePlayerIds;
+  await match.save();
+
+  const updated = await Match.findById(match._id).populate(
+    'playerPool',
+    'name nickname role battingStyle bowlingStyle'
+  );
+
+  res.json({
+    success: true,
+    message: 'Player pool set successfully',
+    data: updated
+  });
+});
+
+// @desc    Get player pool for a match + all active players not in pool
+// @route   GET /api/matches/:id/pool
+// @access  Private
+export const getPlayerPool = asyncHandler(async (req, res) => {
+  const match = await Match.findById(req.params.id).populate(
+    'playerPool',
+    'name nickname role battingStyle bowlingStyle careerStats'
+  );
+
+  if (!match) {
+    throw new AppError('Match not found', 404);
+  }
+
+  const poolIds = (match.playerPool || []).map(p => p._id);
+
+  const absentPlayers = await Player.find({
+    isActive: true,
+    _id: { $nin: poolIds }
+  }).select('name nickname role battingStyle bowlingStyle careerStats');
+
+  res.json({
+    success: true,
+    data: {
+      matchId: match._id,
+      playerPool: match.playerPool,
+      absentPlayers
+    }
+  });
+});
+
+// @desc    Update match status (internal helper + endpoint)
+// @route   PATCH /api/matches/:id/status
+// @access  Private/Admin
+export const updateMatchStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  if (!status) {
+    throw new AppError('status is required', 400);
+  }
+
+  const match = await Match.findById(req.params.id);
+  if (!match) {
+    throw new AppError('Match not found', 404);
+  }
+
+  assertValidTransition(match.status, status);
+  match.status = status;
+  await match.save();
+
+  const updated = await Match.findById(match._id)
+    .populate('teamA', 'name logo color')
+    .populate('teamB', 'name logo color')
+    .populate('playerPool', 'name nickname role battingStyle bowlingStyle');
+
+  res.json({
+    success: true,
+    message: 'Match status updated',
+    data: updated
+  });
+});
+
+// @desc    Set toss and go live
+// @route   POST /api/matches/:id/toss
+// @access  Private/Admin
+export const setToss = asyncHandler(async (req, res) => {
+  const { tossWinnerId, battingFirstId } = req.body;
+  if (!tossWinnerId || !battingFirstId) {
+    throw new AppError('tossWinnerId and battingFirstId are required', 400);
+  }
+
+  const match = await Match.findById(req.params.id);
+  if (!match) {
+    throw new AppError('Match not found', 404);
+  }
+
+  if (match.status !== 'auction_done') {
+    throw new AppError("Toss can only be set when match status is 'auction_done'", 400);
+  }
+
+  // Teams formed in this match's auction are inferred from auctions belonging to this match.
+  const auctionTeamIds = await Auction.distinct('soldTo', { matchId: match._id, soldTo: { $ne: null } });
+  const allowedTeamIds = auctionTeamIds.map(String);
+
+  if (!allowedTeamIds.includes(String(tossWinnerId)) || !allowedTeamIds.includes(String(battingFirstId))) {
+    throw new AppError('Both teams must be teams formed in this match auction', 400);
+  }
+
+  const [tossWinnerTeam, battingFirstTeam] = await Promise.all([
+    Team.findById(tossWinnerId),
+    Team.findById(battingFirstId)
+  ]);
+  if (!tossWinnerTeam || !battingFirstTeam) {
+    throw new AppError('One or both teams not found', 404);
+  }
+
+  match.tossWinner = tossWinnerId;
+  match.battingFirst = battingFirstId;
+  match.status = 'live';
+  await match.save();
+
+  await LiveMatchState.findOneAndUpdate(
+    { matchId: match._id },
+    { $setOnInsert: { matchId: match._id, currentInnings: 1 } },
+    { upsert: true, new: true }
+  );
+
+  const updated = await Match.findById(match._id)
+    .populate('teamA', 'name logo color')
+    .populate('teamB', 'name logo color')
+    .populate('tossWinner', 'name logo color')
+    .populate('battingFirst', 'name logo color');
+
+  res.json({
+    success: true,
+    message: 'Toss set and match is now live',
+    data: updated
+  });
+});
+
+// @desc    Match overview (one call for match detail page)
+// @route   GET /api/matches/:id/overview
+// @access  Private
+export const getMatchOverview = asyncHandler(async (req, res) => {
+  const match = await Match.findById(req.params.id)
+    .populate('teamA', 'name logo color')
+    .populate('teamB', 'name logo color')
+    .populate('tossWinner', 'name logo color')
+    .populate('battingFirst', 'name logo color')
+    .populate('playerPool', 'name nickname role battingStyle bowlingStyle careerStats')
+    .populate('winner', 'name logo color');
+
+  if (!match) {
+    throw new AppError('Match not found', 404);
+  }
+
+  // Auction summary (who got whom, for how much) for this match
+  const auctionRows = await Auction.find({ matchId: match._id, status: { $in: ['closed', 'unsold', 'completed'] } })
+    .populate('playerId', 'name nickname role battingStyle bowlingStyle')
+    .populate('soldTo', 'name logo color')
+    .sort({ createdAt: 1 });
+
+  const auctionSummary = {
+    status: match.status,
+    sold: auctionRows
+      .filter(a => a.soldTo)
+      .map(a => ({
+        player: a.playerId,
+        team: a.soldTo,
+        soldFor: a.soldPrice ?? a.highestBid ?? null
+      })),
+    unsold: auctionRows
+      .filter(a => !a.soldTo)
+      .map(a => ({
+        player: a.playerId
+      }))
+  };
+
+  // Match-scoped teams/squads inferred from auction results
+  const teamIds = [...new Set(auctionRows.filter(a => a.soldTo).map(a => String(a.soldTo._id)))];
+  const teams = await Team.find({ _id: { $in: teamIds } })
+    .populate('captain', 'name email')
+    .populate('players', 'name nickname role battingStyle bowlingStyle soldPrice');
+
+  // Innings summaries (totals only)
+  const inningsSummaries = (match.innings?.length ? match.innings : []).map((inn) => ({
+    inningsNumber: inn.inningsNumber,
+    battingTeam: inn.battingTeam,
+    bowlingTeam: inn.bowlingTeam,
+    totalRuns: inn.totalRuns,
+    totalWickets: inn.totalWickets,
+    totalBalls: inn.totalBalls,
+    extras: inn.extras,
+    target: inn.target,
+    isCompleted: inn.isCompleted
+  }));
+
+  const legacyInningsSummaries = !inningsSummaries.length ? [
+    {
+      inningsNumber: 1,
+      team: match.scorecard?.currentInnings === 'teamB' ? match.teamA : match.teamA,
+      totalRuns: match.scorecard?.teamAScore?.runs ?? 0,
+      totalWickets: match.scorecard?.teamAScore?.wickets ?? 0,
+      totalBalls: ((match.scorecard?.teamAScore?.overs ?? 0) * 6) + (match.scorecard?.teamAScore?.balls ?? 0)
+    },
+    {
+      inningsNumber: 2,
+      team: match.scorecard?.currentInnings === 'teamB' ? match.teamB : match.teamB,
+      totalRuns: match.scorecard?.teamBScore?.runs ?? 0,
+      totalWickets: match.scorecard?.teamBScore?.wickets ?? 0,
+      totalBalls: ((match.scorecard?.teamBScore?.overs ?? 0) * 6) + (match.scorecard?.teamBScore?.balls ?? 0),
+      target: match.scorecard?.target ?? null
+    }
+  ] : [];
+
+  res.json({
+    success: true,
+    data: {
+      match,
+      playerPool: match.playerPool,
+      teams,
+      auctionSummary,
+      inningsSummaries: inningsSummaries.length ? inningsSummaries : legacyInningsSummaries,
+      result: match.result || (match.winner ? { winner: match.winner } : null)
+    }
   });
 });

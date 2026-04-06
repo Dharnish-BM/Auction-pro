@@ -286,3 +286,32 @@ export const getPlayerStatsSummary = asyncHandler(async (req, res) => {
     }
   });
 });
+
+// @desc    Bulk create players (onboard friends)
+// @route   POST /api/players/bulk
+// @access  Private/Admin
+export const bulkCreatePlayers = asyncHandler(async (req, res) => {
+  const { players } = req.body;
+  if (!Array.isArray(players) || players.length === 0) {
+    throw new AppError('players must be a non-empty array', 400);
+  }
+
+  const docs = players.map((p) => ({
+    name: p.name,
+    nickname: p.nickname || p.name,
+    battingStyle: p.battingStyle || '',
+    bowlingStyle: p.bowlingStyle || '',
+    role: p.role,
+    basePrice: 0,
+    isActive: true
+  }));
+
+  const created = await Player.insertMany(docs, { ordered: true });
+
+  res.status(201).json({
+    success: true,
+    message: 'Players created successfully',
+    count: created.length,
+    data: created
+  });
+});

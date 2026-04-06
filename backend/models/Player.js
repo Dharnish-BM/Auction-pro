@@ -46,7 +46,24 @@ const playerSchema = new mongoose.Schema({
   },
   bowlingStyle: {
     type: String,
-    enum: ['Right-arm Fast', 'Right-arm Medium', 'Right-arm Off-spin', 'Right-arm Leg-spin', 'Left-arm Fast', 'Left-arm Medium', 'Left-arm Spin', ''],
+    // Keep legacy values to avoid breaking existing data.
+    enum: [
+      'Right-arm fast',
+      'Right-arm medium',
+      'Left-arm fast',
+      'Left-arm medium',
+      'Right-arm off-spin',
+      'Left-arm spin',
+      'Right-arm leg-spin',
+      'Right-arm Fast',
+      'Right-arm Medium',
+      'Right-arm Off-spin',
+      'Right-arm Leg-spin',
+      'Left-arm Fast',
+      'Left-arm Medium',
+      'Left-arm Spin',
+      ''
+    ],
     default: ''
   },
   isActive: {
